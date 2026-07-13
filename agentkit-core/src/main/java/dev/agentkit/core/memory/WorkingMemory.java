@@ -9,10 +9,12 @@ import java.util.Objects;
  * itself while pursuing a goal.
  *
  * <p>Unlike {@link MemoryStore}, working memory is <em>transient</em> — it lives
- * for the duration of one run and is not persisted. {@link #render()} is the
- * authoritative way to surface notes: the context builder (Phase 6) re-injects
- * them so key facts survive compaction, and a {@code recall} tool is only a
- * fallback for pulling them mid-turn. Not thread-safe.
+ * for the duration of one run and is not persisted. Two ways to surface notes to
+ * the model: expose the {@code remember}/{@code recall} tools (so the model reads
+ * them back on demand), or call {@link #render()} and inject the result into the
+ * system prompt / a context message yourself. Automatic injection into the
+ * engineered context is a caller responsibility, not built into the agent loop.
+ * Not thread-safe.
  */
 public final class WorkingMemory {
 

@@ -17,6 +17,7 @@
         <module>agentkit-core</module>
         <module>agentkit-llm-anthropic</module>
         <module>agentkit-temporal</module>
+        <module>agentkit-examples</module>
     </modules>
 
     <properties>

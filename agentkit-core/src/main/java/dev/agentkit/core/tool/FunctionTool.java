@@ -27,7 +27,8 @@ public final class FunctionTool implements Tool {
     private FunctionTool(Builder builder) {
         this.name = builder.name;
         this.description = builder.description;
-        this.inputSchema = builder.inputSchema;
+        this.inputSchema = java.util.Collections.unmodifiableMap(
+                new java.util.LinkedHashMap<>(builder.inputSchema));
         this.handler = builder.handler;
     }
 

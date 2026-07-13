@@ -14,6 +14,8 @@ public enum StopReason {
     VERIFICATION_FAILED,
     /** The model or a safety layer refused to continue. */
     REFUSED,
+    /** The turn paused (e.g. a long-running server-side tool) and the run does not support resuming it. */
+    PAUSED,
     /** An unrecoverable error occurred while running the agent. */
     ERROR,
     /** The run was cancelled by the caller. */

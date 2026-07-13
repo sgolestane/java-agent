@@ -105,7 +105,7 @@ public final class AnthropicLlmClient implements LlmClient {
             toContentBlockParam(block).ifPresent(blocks::add);
         }
         if (blocks.isEmpty()) {
-            blocks.add(ContentBlockParam.ofText(TextBlockParam.builder().text("").build()));
+            blocks.add(ContentBlockParam.ofText(TextBlockParam.builder().text("(no content)").build()));
         }
         return MessageParam.builder().role(role).contentOfBlockParams(blocks).build();
     }
@@ -161,10 +161,22 @@ public final class AnthropicLlmClient implements LlmClient {
             }
         }
 
-        Tool.InputSchema inputSchema = Tool.InputSchema.builder()
+        Tool.InputSchema.Builder inputSchemaBuilder = Tool.InputSchema.builder()
                 .properties(properties.build())
-                .required(required)
-                .build();
+                .required(required);
+
+        // Forward any additional top-level schema keys (e.g. additionalProperties,
+        // $defs) so richer schemas are not silently weakened.
+        java.util.Map<String, JsonValue> extras = new java.util.LinkedHashMap<>();
+        schema.forEach((k, v) -> {
+            if (!"type".equals(k) && !"properties".equals(k) && !"required".equals(k)) {
+                extras.put(k, JsonValue.from(v));
+            }
+        });
+        if (!extras.isEmpty()) {
+            inputSchemaBuilder.putAllAdditionalProperties(extras);
+        }
+        Tool.InputSchema inputSchema = inputSchemaBuilder.build();
 
         return Tool.builder()
                 .name(spec.name())
@@ -176,6 +188,10 @@ public final class AnthropicLlmClient implements LlmClient {
     // --- response mapping ---------------------------------------------------
 
     private LlmResponse toLlmResponse(com.anthropic.models.messages.Message response) {
+        // NOTE: extended thinking is not enabled on requests yet, so responses do
+        // not carry redacted_thinking blocks. Before enabling thinking, add a core
+        // type to preserve redacted blocks for replay (otherwise the API rejects a
+        // replayed assistant turn that dropped them).
         List<ContentBlock> blocks = new ArrayList<>();
         for (com.anthropic.models.messages.ContentBlock block : response.content()) {
             block.text().ifPresent(t -> blocks.add(TextBlock.of(t.text())));
@@ -188,9 +204,11 @@ public final class AnthropicLlmClient implements LlmClient {
         }
 
         Message assistant = Message.of(Role.ASSISTANT, blocks);
-        LlmStopReason stopReason = mapStopReason(response.stopReason().orElse(null));
+        StopReason rawReason = response.stopReason().orElse(null);
+        LlmStopReason stopReason = mapStopReason(rawReason);
         TokenUsage usage = new TokenUsage(response.usage().inputTokens(), response.usage().outputTokens());
-        return new LlmResponse(assistant, stopReason, usage);
+        return new LlmResponse(assistant, stopReason, usage,
+                java.util.Optional.ofNullable(rawReason).map(Object::toString));
     }
 
     private static Map<String, Object> toArgumentMap(com.anthropic.models.messages.ToolUseBlock use) {

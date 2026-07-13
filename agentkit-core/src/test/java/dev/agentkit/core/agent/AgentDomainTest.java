@@ -52,14 +52,15 @@ class AgentDomainTest {
 
     @Test
     void errorReasonRequiresErrorPresent() {
-        assertThatThrownBy(() -> new AgentResult(StopReason.ERROR, "", 1, java.util.Optional.empty()))
+        assertThatThrownBy(() -> new AgentResult(
+                StopReason.ERROR, "", 1, dev.agentkit.core.llm.TokenUsage.ZERO, java.util.Optional.empty()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void nonErrorReasonRejectsErrorPresent() {
-        assertThatThrownBy(() -> new AgentResult(
-                StopReason.MAX_STEPS, "", 1, java.util.Optional.of(new RuntimeException())))
+        assertThatThrownBy(() -> new AgentResult(StopReason.MAX_STEPS, "", 1,
+                dev.agentkit.core.llm.TokenUsage.ZERO, java.util.Optional.of(new RuntimeException())))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

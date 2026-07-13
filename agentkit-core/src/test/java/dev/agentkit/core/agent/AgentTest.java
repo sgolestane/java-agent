@@ -144,6 +144,31 @@ class AgentTest {
     }
 
     @Test
+    void pauseStopsWithPausedReason() {
+        FakeLlmClient llm = new FakeLlmClient(FakeLlmClient.pause("waiting on server tool"));
+
+        AgentResult result = agent(llm).run(Goal.of("kick off a long tool"));
+
+        assertThat(result.stopReason()).isEqualTo(StopReason.PAUSED);
+        assertThat(result.isSuccess()).isFalse();
+    }
+
+    @Test
+    void tokenUsageAccumulatesAcrossSteps() {
+        Tool noop = FunctionTool.builder("noop", "no-op").handler(inv -> ToolResult.ok("ok")).build();
+        FakeLlmClient llm = new FakeLlmClient(
+                FakeLlmClient.toolUseWithUsage("t1", "noop", Map.of(),
+                        new dev.agentkit.core.llm.TokenUsage(10, 5)),
+                FakeLlmClient.textWithUsage("done", new dev.agentkit.core.llm.TokenUsage(2, 6)));
+
+        AgentResult result = agent(llm, noop).run(Goal.of("do it"));
+
+        // 10+2 input, 5+6 output across the two turns
+        assertThat(result.usage().inputTokens()).isEqualTo(12);
+        assertThat(result.usage().outputTokens()).isEqualTo(11);
+    }
+
+    @Test
     void llmFailureBecomesFailedResult() {
         LlmClient failing = request -> {
             throw new LlmException("provider down");

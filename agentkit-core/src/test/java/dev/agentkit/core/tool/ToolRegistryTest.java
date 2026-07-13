@@ -39,6 +39,25 @@ class ToolRegistryTest {
     }
 
     @Test
+    void functionToolSchemaIsImmutable() {
+        java.util.Map<String, Object> schema = new java.util.HashMap<>();
+        schema.put("type", "object");
+        Tool t = FunctionTool.builder("t", "d").schema(schema).handler(inv -> ToolResult.ok("x")).build();
+
+        schema.put("mutated", true); // must not affect the built tool
+        assertThat(t.inputSchema()).doesNotContainKey("mutated");
+        assertThatThrownBy(() -> t.inputSchema().put("k", "v"))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void advertisedSpecsAreImmutable() {
+        SimpleToolRegistry registry = new SimpleToolRegistry().register(tool("a"));
+        assertThatThrownBy(() -> registry.advertisedSpecs().clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
     void functionToolExposesSpec() {
         Tool t = tool("echo");
         ToolSpec spec = t.spec();

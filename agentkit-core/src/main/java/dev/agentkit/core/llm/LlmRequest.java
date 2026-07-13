@@ -106,6 +106,11 @@ public final class LlmRequest {
             return this;
         }
 
+        public Builder addTool(ToolSpec tool) {
+            this.tools.add(Objects.requireNonNull(tool, "tool"));
+            return this;
+        }
+
         public Builder maxTokens(int maxTokens) {
             if (maxTokens <= 0) {
                 throw new IllegalArgumentException("maxTokens must be > 0");

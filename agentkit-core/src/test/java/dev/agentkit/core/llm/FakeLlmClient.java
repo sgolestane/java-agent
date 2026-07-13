@@ -41,22 +41,38 @@ public final class FakeLlmClient implements LlmClient {
     // --- response factories -------------------------------------------------
 
     public static LlmResponse text(String text) {
-        return new LlmResponse(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
                 LlmStopReason.END_TURN, TokenUsage.ZERO);
     }
 
     public static LlmResponse toolUse(String id, String name, Map<String, Object> input) {
-        return new LlmResponse(Message.of(Role.ASSISTANT, new ToolUseBlock(id, name, input)),
+        return LlmResponse.of(Message.of(Role.ASSISTANT, new ToolUseBlock(id, name, input)),
                 LlmStopReason.TOOL_USE, TokenUsage.ZERO);
     }
 
     public static LlmResponse refusal(String text) {
-        return new LlmResponse(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
                 LlmStopReason.REFUSAL, TokenUsage.ZERO);
     }
 
     public static LlmResponse maxTokens(String text) {
-        return new LlmResponse(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
                 LlmStopReason.MAX_TOKENS, TokenUsage.ZERO);
+    }
+
+    public static LlmResponse pause(String text) {
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+                LlmStopReason.PAUSE, TokenUsage.ZERO);
+    }
+
+    public static LlmResponse textWithUsage(String text, TokenUsage usage) {
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+                LlmStopReason.END_TURN, usage);
+    }
+
+    public static LlmResponse toolUseWithUsage(String id, String name, Map<String, Object> input,
+                                               TokenUsage usage) {
+        return LlmResponse.of(Message.of(Role.ASSISTANT, new ToolUseBlock(id, name, input)),
+                LlmStopReason.TOOL_USE, usage);
     }
 }

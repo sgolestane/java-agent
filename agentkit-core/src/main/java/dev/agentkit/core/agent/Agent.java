@@ -74,7 +74,7 @@ public final class Agent {
                 response = llm.generate(buildRequest(conversation));
             } catch (RuntimeException e) {
                 log.warn("Model call failed on step {}", steps + 1, e);
-                return finish(AgentResult.failed(e, steps));
+                return finish(AgentResult.failed(e, steps, totalUsage));
             }
 
             steps++;
@@ -84,19 +84,34 @@ public final class Agent {
             observer.onModelResponse(steps, response);
             log.debug("Step {} stopReason={} usage={}", steps, response.stopReason(), totalUsage);
 
-            if (response.stopReason() == LlmStopReason.REFUSAL) {
-                return finish(AgentResult.stopped(StopReason.REFUSED, lastText, steps));
+            switch (response.stopReason()) {
+                case REFUSAL -> {
+                    return finish(AgentResult.stopped(StopReason.REFUSED, lastText, steps, totalUsage));
+                }
+                case PAUSE -> {
+                    // A resumable pause (e.g. a long-running server-side tool). This
+                    // in-process loop does not resume; a durable runner (Temporal) can.
+                    return finish(AgentResult.stopped(StopReason.PAUSED, lastText, steps, totalUsage));
+                }
+                case MAX_TOKENS -> {
+                    // Output was truncated. Any tool call in this turn may be
+                    // incomplete, so stop rather than execute a partial call.
+                    return finish(AgentResult.stopped(StopReason.BUDGET_EXHAUSTED, lastText, steps, totalUsage));
+                }
+                default -> {
+                    // END_TURN / OTHER: finish if no tools, else run them and continue.
+                }
             }
 
             List<ToolUseBlock> toolUses = toolUses(response.message());
             if (toolUses.isEmpty()) {
-                return finish(terminalResult(response.stopReason(), lastText, steps));
+                return finish(AgentResult.completed(lastText, steps, totalUsage));
             }
 
             conversation.append(executeTools(steps, toolUses));
         }
 
-        return finish(AgentResult.stopped(StopReason.MAX_STEPS, lastText, steps));
+        return finish(AgentResult.stopped(StopReason.MAX_STEPS, lastText, steps, totalUsage));
     }
 
     private LlmRequest buildRequest(Conversation conversation) {
@@ -132,13 +147,6 @@ public final class Agent {
             log.warn("Tool '{}' threw", invocation.name(), e);
             return ToolResult.error("Tool '" + invocation.name() + "' failed: " + e.getMessage());
         }
-    }
-
-    private static AgentResult terminalResult(LlmStopReason stopReason, String text, int steps) {
-        return switch (stopReason) {
-            case MAX_TOKENS -> AgentResult.stopped(StopReason.BUDGET_EXHAUSTED, text, steps);
-            default -> AgentResult.completed(text, steps);
-        };
     }
 
     private AgentResult finish(AgentResult result) {

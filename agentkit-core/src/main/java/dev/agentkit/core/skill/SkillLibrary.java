@@ -55,17 +55,27 @@ public final class SkillLibrary {
     }
 
     /**
-     * Renders the tier-1 catalog for inclusion in a system prompt: one line per
-     * skill with its name and description, plus a hint to load full instructions.
-     * Returns an empty string when the library is empty.
+     * Renders the tier-1 catalog for inclusion in a system prompt, referencing
+     * the default {@link SkillTools#READ_SKILL} tool name.
      */
     public String catalog() {
+        return catalog(SkillTools.READ_SKILL);
+    }
+
+    /**
+     * Renders the tier-1 catalog for inclusion in a system prompt: one line per
+     * skill with its name and description, plus a hint to load full instructions
+     * via {@code readSkillToolName}. Returns an empty string when the library is
+     * empty.
+     */
+    public String catalog(String readSkillToolName) {
+        Objects.requireNonNull(readSkillToolName, "readSkillToolName");
         if (byName.isEmpty()) {
             return "";
         }
         List<String> lines = new ArrayList<>();
-        lines.add("Available skills (call the 'read_skill' tool with the skill name to load its "
-                + "full instructions before using it):");
+        lines.add("Available skills (call the '" + readSkillToolName + "' tool with the skill name "
+                + "to load its full instructions before using it):");
         for (Skill skill : byName.values()) {
             lines.add("- " + skill.name() + ": " + skill.description());
         }

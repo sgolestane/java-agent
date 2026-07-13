@@ -92,6 +92,25 @@ System.out.println(result.output());
 The agent starts seeing only `finish` and a `search_tools` tool; when it searches
 for "weather" the `get_weather` tool is revealed and becomes callable.
 
+### Skills
+
+Skills add progressively-disclosed expertise. Load a directory of `SKILL.md`
+skills and wire both halves (catalog + tools) in one step:
+
+```java
+SkillLibrary library = new SkillLibrary(SkillLoader.loadDirectory(Path.of("skills")));
+
+// Register read_skill / read_skill_resource, and fold the catalog into the prompt.
+SimpleToolRegistry tools = Skills.registerInto(new SimpleToolRegistry(), library);
+String systemPrompt = Skills.systemPrompt("You are a helpful assistant.", library);
+
+Agent agent = new Agent(llm, tools,
+        AgentConfig.builder(AnthropicLlmClient.DEFAULT_MODEL).systemPrompt(systemPrompt).build());
+```
+
+Only each skill's name + description sit in context; the model calls `read_skill`
+to load full instructions and `read_skill_resource` for bundled files on demand.
+
 ## Requirements
 
 - Java 21+

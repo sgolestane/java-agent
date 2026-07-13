@@ -85,4 +85,39 @@ class SkillFilesystemTest {
                 .execute(new ToolInvocation("1", "read_skill", Map.of("name", "ghost")));
         assertThat(result.isError()).isTrue();
     }
+
+    @Test
+    void readResourceOnInMemorySkillIsError() {
+        SkillLibrary library = new SkillLibrary().add(Skill.of("s", "d", "i"));
+        ToolResult result = SkillTools.readSkillResourceTool(library).execute(
+                new ToolInvocation("1", "read_skill_resource", Map.of("skill", "s", "path", "x.txt")));
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("no bundled resources");
+    }
+
+    @Test
+    void readResourceRejectsDirectoryPath(@TempDir Path root) throws IOException {
+        Path dir = writeSkill(root, "s", "d", "body");
+        Files.createDirectory(dir.resolve("sub"));
+        SkillLibrary library = new SkillLibrary(SkillLoader.loadDirectory(root));
+        ToolResult result = SkillTools.readSkillResourceTool(library).execute(
+                new ToolInvocation("1", "read_skill_resource", Map.of("skill", "s", "path", "sub")));
+        assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void loadDirectoryWithNoSkillsReturnsEmpty(@TempDir Path root) throws IOException {
+        Files.createDirectory(root.resolve("not-a-skill"));
+        assertThat(SkillLoader.loadDirectory(root)).isEmpty();
+    }
+
+    @Test
+    void malformedSkillIsSkippedNotFatal(@TempDir Path root) throws IOException {
+        writeSkill(root, "good", "a good skill", "body");
+        Path bad = Files.createDirectory(root.resolve("bad"));
+        Files.writeString(bad.resolve("SKILL.md"), "no frontmatter here");
+
+        List<Skill> skills = SkillLoader.loadDirectory(root);
+        assertThat(skills).extracting(Skill::name).containsExactly("good");
+    }
 }

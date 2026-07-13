@@ -48,4 +48,25 @@ public record Skill(String name, String description, String instructions,
     public boolean hasResources() {
         return !resourceFiles.isEmpty();
     }
+
+    /**
+     * Renders the full tier-2 view of this skill for injection into context: the
+     * instructions, plus (if any) a listing of bundled resource files with a hint
+     * to read them via {@code resourceToolName}.
+     *
+     * @param resourceToolName the name of the tool that reads bundled resources
+     */
+    public String renderInstructions(String resourceToolName) {
+        Objects.requireNonNull(resourceToolName, "resourceToolName");
+        if (!hasResources()) {
+            return instructions;
+        }
+        StringBuilder sb = new StringBuilder(instructions)
+                .append("\n\nBundled resources (read with '").append(resourceToolName).append("'):\n");
+        for (String file : resourceFiles) {
+            sb.append("- ").append(file).append('\n');
+        }
+        return sb.toString().stripTrailing();
+    }
 }
+

@@ -23,12 +23,20 @@ public final class SkillLoader {
     /** The conventional skill definition file name. */
     public static final String SKILL_FILE = "SKILL.md";
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(SkillLoader.class);
+
     private SkillLoader() {
     }
 
     /**
      * Loads every skill directory directly under {@code root} (a directory is a
      * skill directory iff it contains a {@code SKILL.md}).
+     *
+     * <p><strong>Resilient by design:</strong> a directory whose skill fails to
+     * parse or load is skipped with a logged warning rather than aborting the
+     * whole load — one malformed skill must not disable every other skill in an
+     * unsupervised deployment. Use {@link #loadSkill(Path)} directly when you want
+     * a single skill's failure to propagate.
      */
     public static List<Skill> loadDirectory(Path root) {
         Objects.requireNonNull(root, "root");
@@ -43,7 +51,11 @@ public final class SkillLoader {
                     .sorted()
                     .toList();
             for (Path dir : skillDirs) {
-                skills.add(loadSkill(dir));
+                try {
+                    skills.add(loadSkill(dir));
+                } catch (RuntimeException e) {
+                    LOG.warn("Skipping malformed skill at {}: {}", dir, e.getMessage());
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to list skill directory: " + root, e);

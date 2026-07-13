@@ -34,6 +34,9 @@ public final class SkillParser {
     public static Parsed parse(String content) {
         Objects.requireNonNull(content, "content");
         String normalized = content.replace("\r\n", "\n").replace("\r", "\n");
+        if (normalized.startsWith("﻿")) {
+            normalized = normalized.substring(1); // strip UTF-8 BOM
+        }
         String[] lines = normalized.split("\n", -1);
 
         int i = 0;
@@ -64,6 +67,9 @@ public final class SkillParser {
             String key = line.substring(0, colon).strip();
             String value = unquote(line.substring(colon + 1).strip());
             if (!key.isEmpty()) {
+                if (frontmatter.containsKey(key)) {
+                    throw new SkillFormatException("Duplicate frontmatter key: '" + key + "'");
+                }
                 frontmatter.put(key, value);
             }
         }

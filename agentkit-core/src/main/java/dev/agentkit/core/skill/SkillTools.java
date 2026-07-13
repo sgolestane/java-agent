@@ -32,6 +32,8 @@ public final class SkillTools {
     public static final String READ_SKILL = "read_skill";
     public static final String READ_SKILL_RESOURCE = "read_skill_resource";
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(SkillTools.class);
+
     private SkillTools() {
     }
 
@@ -81,16 +83,7 @@ public final class SkillTools {
         if (skill.isEmpty()) {
             return ToolResult.error("No skill named '" + name + "'.");
         }
-        Skill s = skill.get();
-        StringBuilder sb = new StringBuilder(s.instructions());
-        if (s.hasResources()) {
-            sb.append("\n\nBundled resources (read with '").append(READ_SKILL_RESOURCE)
-                    .append("'):\n");
-            for (String file : s.resourceFiles()) {
-                sb.append("- ").append(file).append('\n');
-            }
-        }
-        return ToolResult.ok(sb.toString().stripTrailing());
+        return ToolResult.ok(skill.get().renderInstructions(READ_SKILL_RESOURCE));
     }
 
     private static ToolResult readResource(SkillLibrary library, ToolInvocation inv) {
@@ -119,7 +112,9 @@ public final class SkillTools {
         try {
             return ToolResult.ok(Files.readString(resolved, StandardCharsets.UTF_8));
         } catch (IOException e) {
-            return ToolResult.error("Failed to read resource '" + path + "': " + e.getMessage());
+            // Do not surface the absolute path / host layout to the model.
+            LOG.warn("Failed to read skill resource {} for skill {}", path, name, e);
+            return ToolResult.error("Failed to read resource '" + path + "'.");
         }
     }
 }

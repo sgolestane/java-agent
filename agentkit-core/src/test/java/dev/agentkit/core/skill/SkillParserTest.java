@@ -71,6 +71,24 @@ class SkillParserTest {
     }
 
     @Test
+    void duplicateKeyIsRejected() {
+        assertThatThrownBy(() -> SkillParser.parse("---\nname: a\nname: b\ndescription: d\n---\nbody"))
+                .isInstanceOf(SkillFormatException.class);
+    }
+
+    @Test
+    void leadingBomIsStripped() {
+        SkillParser.Parsed parsed = SkillParser.parse("﻿---\nname: x\ndescription: y\n---\nbody");
+        assertThat(parsed.name()).isEqualTo("x");
+    }
+
+    @Test
+    void bodyLineEqualToDelimiterIsNotConsumed() {
+        SkillParser.Parsed parsed = SkillParser.parse("---\nname: x\ndescription: y\n---\nintro\n---\nmore");
+        assertThat(parsed.body()).contains("intro").contains("---").contains("more");
+    }
+
+    @Test
     void toSkillProducesInMemorySkill() {
         Skill skill = SkillParser.toSkill("---\nname: s\ndescription: d\n---\nhello");
         assertThat(skill.name()).isEqualTo("s");

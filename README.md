@@ -128,6 +128,25 @@ SimpleToolRegistry tools = new SimpleToolRegistry()
 The agent calls `knowledge_search` and receives the most relevant passages with
 their source ids.
 
+### Memory
+
+Give the agent memory that survives restarts. A durable `MemoryStore` (file-backed
+or in-memory) is exposed as a `memory` tool; a per-run `WorkingMemory` scratchpad
+is exposed as `remember`/`recall`:
+
+```java
+MemoryStore store = new FileMemoryStore(Path.of("agent-memory"));  // survives across runs
+WorkingMemory scratch = new WorkingMemory();                       // this run only
+
+SimpleToolRegistry tools = new SimpleToolRegistry()
+        .register(MemoryTools.memoryTool(store))
+        .register(MemoryTools.rememberTool(scratch))
+        .register(MemoryTools.recallTool(scratch));
+```
+
+Across sessions the agent reads and writes durable facts under keys like
+`facts/user.md`; paths are confined to the memory root (no traversal).
+
 ## Requirements
 
 - Java 21+

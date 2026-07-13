@@ -283,9 +283,26 @@ try (BedrockClient control = BedrockClient.create()) {
 ```
 
 If you obtain ARNs another way (config, SSM, your own discovery), skip discovery
-and pass `ModelResolver.ofMap(yourMap)`. The example `main`s honour
-`AGENTKIT_BACKEND=bedrock` (and `AGENTKIT_BEDROCK_DISCOVER_PROFILES=true`) so the
-demos run on either backend unchanged.
+and pass `ModelResolver.ofMap(yourMap)`.
+
+**Run a demo on Bedrock.** The example `main`s honour `AGENTKIT_BACKEND=bedrock`
+(and `AGENTKIT_BEDROCK_DISCOVER_PROFILES=true`) and resolve AWS credentials/region
+through the standard chain — including a named **SSO** profile:
+
+```bash
+aws sso login --profile thira-eng-bedrock          # ensure a valid session
+export AWS_PROFILE=thira-eng-bedrock
+export AWS_REGION=us-east-1                         # your Bedrock region
+export AGENTKIT_BACKEND=bedrock
+export AGENTKIT_BEDROCK_DISCOVER_PROFILES=true      # map logical ids → your profile ARNs
+
+mvn -pl agentkit-examples -am exec:java \
+    -Dexec.mainClass=dev.agentkit.examples.EndToEndAgent
+```
+
+The `agentkit-examples` module bundles the AWS `sso`/`ssooidc` modules so an SSO
+profile resolves out of the box; a library that uses SSO must add those two AWS
+SDK artifacts itself. No `ANTHROPIC_API_KEY` is needed on the Bedrock path.
 
 ## Requirements
 

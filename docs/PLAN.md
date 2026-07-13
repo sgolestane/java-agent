@@ -104,7 +104,7 @@ focused and buildable.
 - [x] Phase 4
 - [x] Phase 5
 - [x] Phase 6
-- [ ] Phase 7
+- [x] Phase 7
 
 ### Deliberate scope decisions
 

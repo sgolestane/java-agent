@@ -166,6 +166,32 @@ Editing runs first (cheap bulk removal), then compaction if still large; the
 compaction boundary never orphans a tool result, and a failed summary falls back
 to the full history.
 
+### Verification & reliability
+
+Don't trust the first answer, gate risky actions, and survive transient failures:
+
+```java
+// Retry transient LLM failures with backoff.
+LlmClient reliable = new RetryingLlmClient(AnthropicLlmClient.fromEnv(), RetryPolicy.defaults());
+
+// Gate hard-to-reverse tools (denied calls come back to the model as errors).
+Agent agent = Agent.builder(reliable, tools, config)
+        .toolGate(ToolGates.denyTools(Set.of("delete_account", "send_wire")))
+        .build();
+
+// Verify the outcome against the goal and retry with feedback if it fails.
+SelfVerifyingAgent verified = new SelfVerifyingAgent(
+        agent, new LlmVerifier(reliable, model), /* maxAttempts */ 3);
+
+AgentResult result = verified.run(Goal.of("Produce a reconciled Q3 report"));
+// result.stopReason() == VERIFICATION_FAILED if it never passed the critic.
+```
+
+Not every check needs a model. `Verifiers` supplies deterministic checks —
+`matching(pattern)`, `containing(text)`, `satisfies(predicate, reason)` — and
+`Verifiers.allOf(...)` composes a cheap structural check ahead of the LLM critic
+so a run is gated on both, short-circuiting before spending a call.
+
 ## Requirements
 
 - Java 21+

@@ -105,6 +105,9 @@ focused and buildable.
 - [x] Phase 5
 - [x] Phase 6
 - [x] Phase 7
+- [x] Phase 8
+- [ ] Phase 9
+- [ ] Phase 10
 
 ### Deliberate scope decisions
 
@@ -116,6 +119,9 @@ focused and buildable.
   partial edits (`str_replace`/`insert`) are a future addition.
 - **Compaction issues a model call**, so under the Temporal integration (Phase 9)
   the context strategy runs inside an activity, not the replayed workflow body.
-- [ ] Phase 8
-- [ ] Phase 9
-- [ ] Phase 10
+- **Goal decomposition has two paths, no built-in planner.** Programmatic
+  (`Supervisor.fanOut` over a caller-supplied task list, parallel) and model-driven
+  (`SubagentTools.delegateTool` on a supervisor agent, sequential). A dedicated
+  LLM "planner" that parses a goal into a task list was deliberately omitted — the
+  model-driven tool path already covers dynamic decomposition without a brittle
+  plan-parsing step.

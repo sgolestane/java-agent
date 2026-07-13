@@ -192,6 +192,33 @@ Not every check needs a model. `Verifiers` supplies deterministic checks —
 `Verifiers.allOf(...)` composes a cheap structural check ahead of the LLM critic
 so a run is gated on both, short-circuiting before spending a call.
 
+### Supervisor & subagents
+
+Decompose a goal across specialised subagents and synthesize their results. Each
+subagent is a named `Agent` (built fresh per delegation, so parallel fan-out
+shares no state):
+
+```java
+SubagentRoster roster = SubagentRoster.of(
+        Subagent.of("researcher", "Finds and summarises facts",
+                () -> new Agent(llm, researchTools, config)),
+        Subagent.of("writer", "Turns notes into polished prose",
+                () -> new Agent(llm, writerTools, config)));
+
+// Programmatic fan-out: independent subgoals run concurrently, then synthesize.
+Supervisor supervisor = Supervisor.builder(roster)
+        .synthesizer(Synthesizers.llm(llm, model))   // or .concatenating()
+        .build();
+
+SupervisionResult result = supervisor.fanOut(Goal.of("Brief me on X"), List.of(
+        DelegatedTask.of("researcher", "Gather the key facts about X"),
+        DelegatedTask.of("writer", "Draft a one-paragraph brief")));
+```
+
+When the split depends on intermediate results, let a supervisor *model* decide
+instead: wire `SubagentTools.delegateTool(roster)` into an ordinary `Agent` and
+it calls `delegate(subagent, goal)` one subgoal at a time.
+
 ## Requirements
 
 - Java 21+

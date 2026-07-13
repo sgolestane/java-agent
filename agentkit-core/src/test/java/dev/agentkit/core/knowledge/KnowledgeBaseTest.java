@@ -55,6 +55,46 @@ class KnowledgeBaseTest {
     }
 
     @Test
+    void vectorKnowledgeBaseSearches() {
+        KnowledgeBase kb = InMemoryKnowledgeBase.vector(new HashingEmbeddingModel(64));
+        kb.ingestAll(List.of(
+                Document.of("db", "database migration schema indexes"),
+                Document.of("food", "cooking recipe dinner ingredients")));
+        List<SearchResult> results = kb.search("database schema", 3);
+        assertThat(results.get(0).chunk().documentId()).isEqualTo("db");
+    }
+
+    @Test
+    void citationIncludesSourceMetadata() {
+        KnowledgeBase kb = InMemoryKnowledgeBase.bm25();
+        kb.ingest(new Document("policy", "Refunds within 30 days with a receipt.",
+                Map.of("title", "Refund Policy", "url", "https://example.com/refunds")));
+        ToolResult result = KnowledgeTools.knowledgeSearchTool(kb)
+                .execute(new ToolInvocation("1", "knowledge_search", Map.of("query", "receipt")));
+        assertThat(result.content()).contains("Refund Policy").contains("https://example.com/refunds");
+    }
+
+    @Test
+    void agentUsesKnowledgeSearchTool() {
+        dev.agentkit.core.tool.SimpleToolRegistry registry = new dev.agentkit.core.tool.SimpleToolRegistry()
+                .register(KnowledgeTools.knowledgeSearchTool(populated()));
+        dev.agentkit.core.llm.FakeLlmClient llm = new dev.agentkit.core.llm.FakeLlmClient(
+                dev.agentkit.core.llm.FakeLlmClient.toolUse("k1", "knowledge_search",
+                        Map.of("query", "receipt")),
+                dev.agentkit.core.llm.FakeLlmClient.text("You have 30 days."));
+
+        dev.agentkit.core.agent.Agent agent = new dev.agentkit.core.agent.Agent(llm, registry,
+                dev.agentkit.core.agent.AgentConfig.builder("m").maxSteps(5).build());
+        dev.agentkit.core.agent.AgentResult r = agent.run(
+                dev.agentkit.core.agent.Goal.of("refund window?"));
+
+        assertThat(r.isSuccess()).isTrue();
+        var toolMsg = llm.received().get(1).messages().get(2);
+        assertThat(((dev.agentkit.core.message.ToolResultBlock) toolMsg.content().get(0)).content())
+                .contains("Refunds are available");
+    }
+
+    @Test
     void knowledgeSearchToolClampsMaxResults() {
         Tool tool = KnowledgeTools.knowledgeSearchTool(populated());
         // Requesting a huge max_results must not error (it is capped internally).

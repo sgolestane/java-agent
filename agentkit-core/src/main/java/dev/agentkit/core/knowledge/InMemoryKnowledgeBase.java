@@ -22,12 +22,12 @@ public final class InMemoryKnowledgeBase implements KnowledgeBase {
     }
 
     /** A BM25 (lexical) knowledge base with the default chunker. */
-    public static InMemoryKnowledgeBase bm25() {
+    public static KnowledgeBase bm25() {
         return new InMemoryKnowledgeBase(DEFAULT_CHUNKER, new Bm25Retriever());
     }
 
     /** A vector (semantic) knowledge base with the default chunker. */
-    public static InMemoryKnowledgeBase vector(EmbeddingModel model) {
+    public static KnowledgeBase vector(EmbeddingModel model) {
         return new InMemoryKnowledgeBase(DEFAULT_CHUNKER, new VectorRetriever(model));
     }
 

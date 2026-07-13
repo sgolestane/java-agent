@@ -17,6 +17,8 @@ public final class KnowledgeTools {
 
     private static final int DEFAULT_MAX_RESULTS = 5;
     private static final int MAX_RESULTS_CAP = 25;
+    /** Per-passage character budget, so a large custom chunk cannot flood the context. */
+    private static final int MAX_PASSAGE_CHARS = 1000;
 
     private KnowledgeTools() {
     }
@@ -30,7 +32,10 @@ public final class KnowledgeTools {
                         "query", Map.of("type", "string",
                                 "description", "The information need to search for"),
                         "max_results", Map.of("type", "integer",
-                                "description", "Maximum number of results (default " + DEFAULT_MAX_RESULTS + ")")),
+                                "description", "Maximum number of results",
+                                "default", DEFAULT_MAX_RESULTS,
+                                "minimum", 1,
+                                "maximum", MAX_RESULTS_CAP)),
                 "required", List.of("query"));
         return FunctionTool.builder(KNOWLEDGE_SEARCH,
                         "Search the knowledge base for information relevant to a query and return "
@@ -52,11 +57,32 @@ public final class KnowledgeTools {
         }
         StringBuilder sb = new StringBuilder("Found ").append(results.size()).append(" passage(s):\n");
         for (SearchResult result : results) {
-            sb.append("\n[").append(result.chunk().id()).append("] (score ")
-                    .append(String.format(java.util.Locale.ROOT, "%.3f", result.score())).append(")\n")
-                    .append(result.chunk().text().strip()).append('\n');
+            sb.append('\n').append(citation(result)).append('\n')
+                    .append(truncate(result.chunk().text().strip())).append('\n');
         }
         return ToolResult.ok(sb.toString().stripTrailing());
+    }
+
+    private static String citation(SearchResult result) {
+        Map<String, Object> meta = result.chunk().metadata();
+        StringBuilder cite = new StringBuilder("[").append(result.chunk().id()).append("]");
+        Object title = meta.get("title");
+        Object url = meta.get("url");
+        if (title != null) {
+            cite.append(" \"").append(title).append('"');
+        }
+        if (url != null) {
+            cite.append(" <").append(url).append('>');
+        }
+        cite.append(" (score ").append(String.format(java.util.Locale.ROOT, "%.3f", result.score())).append(')');
+        return cite.toString();
+    }
+
+    private static String truncate(String text) {
+        if (text.length() <= MAX_PASSAGE_CHARS) {
+            return text;
+        }
+        return text.substring(0, MAX_PASSAGE_CHARS) + "…";
     }
 
     private static int clampMaxResults(Object raw) {

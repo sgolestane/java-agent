@@ -129,8 +129,7 @@ public final class Bm25Index {
         return scored.size() > limit ? List.copyOf(scored.subList(0, limit)) : List.copyOf(scored);
     }
 
-    /** Tokenises text into lower-cased alphanumeric terms (the scheme this index uses). */
-    public static List<String> tokenize(String text) {
+    static List<String> tokenize(String text) {
         List<String> tokens = new ArrayList<>();
         if (text == null || text.isEmpty()) {
             return tokens;

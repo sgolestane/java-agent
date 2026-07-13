@@ -3,7 +3,9 @@ package dev.agentkit.core.knowledge;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -21,7 +23,9 @@ public final class VectorRetriever implements Retriever {
     }
 
     private final EmbeddingModel model;
-    private final List<Entry> entries = new ArrayList<>();
+    // Keyed by chunk id so re-adding the same chunk replaces (not duplicates) it,
+    // matching Bm25Retriever's set semantics.
+    private final Map<String, Entry> entries = new LinkedHashMap<>();
 
     public VectorRetriever(EmbeddingModel model) {
         this.model = Objects.requireNonNull(model, "model");
@@ -32,7 +36,7 @@ public final class VectorRetriever implements Retriever {
         Objects.requireNonNull(chunks, "chunks");
         for (Chunk chunk : chunks) {
             float[] vector = model.embed(chunk.text());
-            entries.add(new Entry(chunk, vector, norm(vector)));
+            entries.put(chunk.id(), new Entry(chunk, vector, norm(vector)));
         }
     }
 
@@ -46,12 +50,13 @@ public final class VectorRetriever implements Retriever {
         }
         float[] q = model.embed(query);
         double qNorm = norm(q);
-        List<SearchResult> results = new ArrayList<>();
-        for (Entry entry : entries) {
+        List<SearchResult> results = new ArrayList<>(entries.size());
+        for (Entry entry : entries.values()) {
+            // Rank by cosine including non-positive similarities: unlike lexical
+            // BM25, a low/negative cosine still identifies the nearest available
+            // chunk. Callers filter by score if they want a relevance threshold.
             double sim = cosine(q, qNorm, entry.vector(), entry.norm());
-            if (sim > 0) {
-                results.add(new SearchResult(entry.chunk(), sim));
-            }
+            results.add(new SearchResult(entry.chunk(), sim));
         }
         results.sort(Comparator.comparingDouble(SearchResult::score).reversed()
                 .thenComparing(r -> r.chunk().id()));
@@ -72,12 +77,14 @@ public final class VectorRetriever implements Retriever {
     }
 
     private static double cosine(float[] a, double aNorm, float[] b, double bNorm) {
-        if (aNorm == 0 || bNorm == 0) {
-            return 0;
-        }
+        // Dimension check first, so a misconfigured model is caught even when a
+        // zero-magnitude vector is involved.
         if (a.length != b.length) {
             throw new IllegalArgumentException(
                     "Embedding dimension mismatch: " + a.length + " vs " + b.length);
+        }
+        if (aNorm == 0 || bNorm == 0) {
+            return 0;
         }
         double dot = 0;
         for (int i = 0; i < a.length; i++) {

@@ -13,7 +13,9 @@ import java.util.Objects;
  * keyword, and code-like queries; requires no embedding model.
  *
  * <p>The BM25 index is rebuilt lazily on the first search after chunks change, so
- * batch ingestion followed by queries is efficient. Not thread-safe.
+ * batch ingestion followed by queries is efficient. Not thread-safe — because the
+ * first search after ingestion mutates internal state (the rebuild), perform a
+ * warm-up search before sharing an instance read-only across threads.
  */
 public final class Bm25Retriever implements Retriever {
 

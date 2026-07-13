@@ -47,6 +47,15 @@ class RetrieverTest {
     }
 
     @Test
+    void vectorReAddReplacesNotDuplicates() {
+        VectorRetriever retriever = new VectorRetriever(new HashingEmbeddingModel(32));
+        retriever.add(List.of(chunk("c1", "alpha beta")));
+        retriever.add(List.of(chunk("c1", "alpha beta"))); // same id again
+        assertThat(retriever.size()).isEqualTo(1);
+        assertThat(retriever.search("alpha", 5)).hasSize(1);
+    }
+
+    @Test
     void vectorRetrieverEmptyReturnsNothing() {
         assertThat(new VectorRetriever(new HashingEmbeddingModel(8)).search("x", 5)).isEmpty();
     }

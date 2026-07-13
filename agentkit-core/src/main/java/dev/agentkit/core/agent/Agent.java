@@ -1,5 +1,6 @@
 package dev.agentkit.core.agent;
 
+import dev.agentkit.core.context.ContextStrategy;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmRequest;
 import dev.agentkit.core.llm.LlmResponse;
@@ -44,16 +45,23 @@ public final class Agent {
     private final ToolRegistry tools;
     private final AgentConfig config;
     private final AgentObserver observer;
+    private final ContextStrategy contextStrategy;
 
     public Agent(LlmClient llm, ToolRegistry tools, AgentConfig config) {
-        this(llm, tools, config, AgentObserver.NONE);
+        this(llm, tools, config, AgentObserver.NONE, ContextStrategy.IDENTITY);
     }
 
     public Agent(LlmClient llm, ToolRegistry tools, AgentConfig config, AgentObserver observer) {
+        this(llm, tools, config, observer, ContextStrategy.IDENTITY);
+    }
+
+    public Agent(LlmClient llm, ToolRegistry tools, AgentConfig config, AgentObserver observer,
+                 ContextStrategy contextStrategy) {
         this.llm = Objects.requireNonNull(llm, "llm");
         this.tools = Objects.requireNonNull(tools, "tools");
         this.config = Objects.requireNonNull(config, "config");
         this.observer = Objects.requireNonNull(observer, "observer");
+        this.contextStrategy = Objects.requireNonNull(contextStrategy, "contextStrategy");
     }
 
     /** Runs the agent to pursue {@code goal}. */
@@ -115,8 +123,9 @@ public final class Agent {
     }
 
     private LlmRequest buildRequest(Conversation conversation) {
+        List<Message> messages = contextStrategy.prepare(conversation.messages());
         LlmRequest.Builder builder = LlmRequest.builder(config.model())
-                .messages(conversation.messages())
+                .messages(messages)
                 .tools(tools.advertisedSpecs())
                 .maxTokens(config.maxTokens());
         config.systemPromptValue().ifPresent(builder::system);

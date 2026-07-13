@@ -147,6 +147,25 @@ SimpleToolRegistry tools = new SimpleToolRegistry()
 Across sessions the agent reads and writes durable facts under keys like
 `facts/user.md`; paths are confined to the memory root (no traversal).
 
+### Context engineering
+
+Keep long-horizon runs within the context window. A `ContextStrategy` transforms
+the history before every model turn — editing (prune old tool results) and
+compaction (summarise older turns) compose behind one hook:
+
+```java
+ContextStrategy context = ContextStrategies.of(
+        new ClearToolResultsEditor(6),                      // clear tool results older than 6 msgs
+        SummarizingCompactor.builder(llm, model)            // summarise once history gets large
+                .triggerTokens(120_000).keepRecentMessages(8).build());
+
+Agent agent = new Agent(llm, tools, config, AgentObserver.NONE, context);
+```
+
+Editing runs first (cheap bulk removal), then compaction if still large; the
+compaction boundary never orphans a tool result, and a failed summary falls back
+to the full history.
+
 ## Requirements
 
 - Java 21+

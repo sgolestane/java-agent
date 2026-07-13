@@ -42,8 +42,9 @@ public final class MemoryTools {
                                 "description", "Text to store (for 'write' and 'append')")),
                 "required", List.of("command"));
         return FunctionTool.builder(MEMORY,
-                        "Durable memory that persists across sessions. Read prior knowledge, and "
-                                + "write new facts you'll need in future runs. Never store secrets.")
+                        "Durable memory that persists across sessions. Commands: read/write/append/"
+                                + "delete a key, or list keys under a path prefix. Read prior knowledge, "
+                                + "and write facts you'll need in future runs. Never store secrets.")
                 .schema(schema)
                 .handler(inv -> dispatch(store, inv))
                 .build();

@@ -15,8 +15,11 @@ class MemoryStoreTest {
     @TempDir
     static Path tempRoot;
 
+    // A fresh directory per store instance so parameterized methods don't leak state.
     static Stream<MemoryStore> stores() {
-        return Stream.of(new InMemoryMemoryStore(), new FileMemoryStore(tempRoot.resolve("s")));
+        return Stream.of(
+                new InMemoryMemoryStore(),
+                new FileMemoryStore(tempRoot.resolve(java.util.UUID.randomUUID().toString())));
     }
 
     @ParameterizedTest
@@ -47,6 +50,22 @@ class MemoryStoreTest {
         store.write("other.md", "o");
         assertThat(store.list("notes/")).containsExactly("notes/a.md", "notes/b.md");
         assertThat(store.list("")).contains("notes/a.md", "notes/b.md", "other.md");
+    }
+
+    @ParameterizedTest
+    @MethodSource("stores")
+    void keysAreNormalisedConsistently(MemoryStore store) {
+        store.write("a//b", "x");        // collapses to a/b
+        assertThat(store.read("a/b")).contains("x");
+        store.write("./c", "y");          // strips leading ./
+        assertThat(store.list("")).contains("a/b", "c");
+    }
+
+    @ParameterizedTest
+    @MethodSource("stores")
+    void rootAndTraversalKeysRejected(MemoryStore store) {
+        assertThatThrownBy(() -> store.delete(".")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> store.write("a/..", "x")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @org.junit.jupiter.api.Test

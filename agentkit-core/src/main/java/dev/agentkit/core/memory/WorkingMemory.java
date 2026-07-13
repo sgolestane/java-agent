@@ -9,9 +9,10 @@ import java.util.Objects;
  * itself while pursuing a goal.
  *
  * <p>Unlike {@link MemoryStore}, working memory is <em>transient</em> — it lives
- * for the duration of one run and is not persisted. It complements context
- * engineering (Phase 6): notes can be re-injected into a compacted context so
- * key facts survive summarisation. Not thread-safe.
+ * for the duration of one run and is not persisted. {@link #render()} is the
+ * authoritative way to surface notes: the context builder (Phase 6) re-injects
+ * them so key facts survive compaction, and a {@code recall} tool is only a
+ * fallback for pulling them mid-turn. Not thread-safe.
  */
 public final class WorkingMemory {
 

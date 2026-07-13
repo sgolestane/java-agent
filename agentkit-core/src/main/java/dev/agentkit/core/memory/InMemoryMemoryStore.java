@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
+// Keys are normalised via MemoryKeys so behaviour matches FileMemoryStore.
 
 /**
  * A non-persistent {@link MemoryStore} backed by a map. Useful for tests and for
@@ -16,11 +17,7 @@ public final class InMemoryMemoryStore implements MemoryStore {
     private final TreeMap<String, String> store = new TreeMap<>();
 
     private static String normalize(String path) {
-        Objects.requireNonNull(path, "path");
-        if (path.isBlank()) {
-            throw new IllegalArgumentException("path must not be blank");
-        }
-        return path.strip();
+        return MemoryKeys.normalize(path);
     }
 
     @Override

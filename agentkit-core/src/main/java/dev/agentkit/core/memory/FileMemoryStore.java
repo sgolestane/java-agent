@@ -17,9 +17,11 @@ import java.util.stream.Stream;
  * A {@link MemoryStore} backed by a directory on disk, so memory survives process
  * restarts and is shared across runs that point at the same root.
  *
- * <p>All paths are confined to the root via {@link SafePaths}, rejecting traversal
- * ({@code ..}, absolute paths). Not thread-safe for concurrent writers to the same
- * path.
+ * <p>All keys are confined to the root via {@link SafePaths}, rejecting traversal
+ * ({@code ..}, absolute paths) and the root itself. Confinement is <em>lexical</em>:
+ * a symlink placed inside the root by some other process could still point outside
+ * it — assume the memory directory holds only content this agent writes. Not
+ * thread-safe for concurrent writers to the same path.
  */
 public final class FileMemoryStore implements MemoryStore {
 

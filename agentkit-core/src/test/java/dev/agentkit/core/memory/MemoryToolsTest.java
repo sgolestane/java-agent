@@ -75,10 +75,27 @@ class MemoryToolsTest {
     }
 
     @Test
-    void agentPersistsAndRecallsAcrossRuns() {
-        MemoryStore store = new InMemoryMemoryStore();
+    void memoryToolAppendAndListWithPrefix() {
+        Tool memory = MemoryTools.memoryTool(new InMemoryMemoryStore());
+        run(memory, Map.of("command", "append", "path", "log.txt", "content", "one\n"));
+        run(memory, Map.of("command", "append", "path", "log.txt", "content", "two\n"));
+        assertThat(run(memory, Map.of("command", "read", "path", "log.txt")).content()).isEqualTo("one\ntwo\n");
+        run(memory, Map.of("command", "write", "path", "notes/a.md", "content", "x"));
+        assertThat(run(memory, Map.of("command", "list", "path", "notes/")).content()).isEqualTo("notes/a.md");
+    }
+
+    @Test
+    void memoryToolDeleteMissingReportsNothing() {
+        Tool memory = MemoryTools.memoryTool(new InMemoryMemoryStore());
+        assertThat(run(memory, Map.of("command", "delete", "path", "gone")).content()).contains("Nothing to delete");
+    }
+
+    @Test
+    void agentPersistsAndRecallsAcrossRuns(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root) {
+        // Two independently-constructed durable stores over the same directory,
+        // simulating two separate sessions with a process boundary in between.
         // Run 1: the model writes a fact to durable memory.
-        SimpleToolRegistry reg1 = new SimpleToolRegistry().register(MemoryTools.memoryTool(store));
+        SimpleToolRegistry reg1 = new SimpleToolRegistry().register(MemoryTools.memoryTool(new FileMemoryStore(root)));
         FakeLlmClient llm1 = new FakeLlmClient(
                 FakeLlmClient.toolUse("m1", "memory",
                         Map.of("command", "write", "path", "facts/color.md", "content", "blue")),
@@ -86,8 +103,8 @@ class MemoryToolsTest {
         new Agent(llm1, reg1, AgentConfig.builder("m").maxSteps(5).build())
                 .run(Goal.of("remember my favorite color is blue"));
 
-        // Run 2 (new agent, same store): the model reads it back.
-        SimpleToolRegistry reg2 = new SimpleToolRegistry().register(MemoryTools.memoryTool(store));
+        // Run 2 (new agent, freshly-constructed store over the same dir): reads it back.
+        SimpleToolRegistry reg2 = new SimpleToolRegistry().register(MemoryTools.memoryTool(new FileMemoryStore(root)));
         FakeLlmClient llm2 = new FakeLlmClient(
                 FakeLlmClient.toolUse("m2", "memory", Map.of("command", "read", "path", "facts/color.md")),
                 FakeLlmClient.text("Your favorite color is blue."));

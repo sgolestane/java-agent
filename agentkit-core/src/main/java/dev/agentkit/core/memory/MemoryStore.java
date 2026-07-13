@@ -1,5 +1,6 @@
 package dev.agentkit.core.memory;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,6 +15,16 @@ import java.util.Optional;
  * into future contexts; a credential written once is exposed to every later run.
  */
 public interface MemoryStore {
+
+    /** A non-persistent, in-process store. */
+    static MemoryStore inMemory() {
+        return new InMemoryMemoryStore();
+    }
+
+    /** A durable store backed by the directory {@code root}. */
+    static MemoryStore file(Path root) {
+        return new FileMemoryStore(root);
+    }
 
     /** Reads the content at {@code path}, or empty if it does not exist. */
     Optional<String> read(String path);
@@ -30,6 +41,11 @@ public interface MemoryStore {
     /** Whether {@code path} exists. */
     boolean exists(String path);
 
-    /** Lists existing paths that start with {@code prefix} (empty prefix lists all), sorted. */
+    /**
+     * Lists existing paths that start with {@code prefix} (empty prefix lists
+     * all), sorted. Matching is a <em>lexical</em> string prefix, not a
+     * path-segment prefix — {@code "notes"} matches both {@code "notes/a"} and
+     * {@code "notesheet"}; pass {@code "notes/"} to scope to a directory.
+     */
     List<String> list(String prefix);
 }

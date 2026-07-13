@@ -27,6 +27,13 @@ class WorkingMemoryTest {
     }
 
     @Test
+    void notesSnapshotIsUnmodifiable() {
+        WorkingMemory wm = new WorkingMemory().note("a");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> wm.notes().add("b"))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
     void clearEmptiesNotes() {
         WorkingMemory wm = new WorkingMemory().note("x");
         wm.clear();

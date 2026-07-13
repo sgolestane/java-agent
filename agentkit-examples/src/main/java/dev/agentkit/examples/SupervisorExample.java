@@ -1,6 +1,5 @@
 package dev.agentkit.examples;
 
-import dev.agentkit.anthropic.AnthropicLlmClient;
 import dev.agentkit.core.agent.Agent;
 import dev.agentkit.core.agent.AgentConfig;
 import dev.agentkit.core.agent.Goal;
@@ -44,10 +43,10 @@ public final class SupervisorExample {
                 .build();
     }
 
-    /** Runs the example against the real Anthropic API (reads {@code ANTHROPIC_API_KEY}). */
+    /** Runs the example against the configured backend (see {@link ExampleBackend}). */
     public static void main(String[] args) {
-        LlmClient llm = AnthropicLlmClient.fromEnv();
-        Supervisor supervisor = build(llm, AnthropicLlmClient.DEFAULT_MODEL);
+        ExampleBackend backend = ExampleBackend.fromEnv();
+        Supervisor supervisor = build(backend.llm(), backend.model());
 
         Goal goal = Goal.of("Produce a one-paragraph brief on the benefits of durable execution.");
         SupervisionResult result = supervisor.fanOut(goal, List.of(

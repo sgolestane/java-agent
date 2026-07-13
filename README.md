@@ -49,6 +49,7 @@ dumped, and actions are verified and gated rather than trusted.
 ```
 agentkit-core/          # provider-agnostic core
 agentkit-llm-anthropic/ # LlmClient over the Anthropic Java SDK (claude-opus-4-8)
+agentkit-llm-bedrock/   # the Anthropic adapter on Claude via Amazon Bedrock
 agentkit-temporal/      # agent loop as a Temporal workflow
 agentkit-examples/      # runnable end-to-end demos
 ```
@@ -258,6 +259,32 @@ v1 durable notes: the tool set is fixed for the run (progressive disclosure woul
 need the revealed set tracked as durable state); context compaction issues its own
 model call, so it belongs in a future activity; and because activity retry is
 at-least-once, a non-idempotent tool should set `toolMaxAttempts = 1`.
+
+### Running on Amazon Bedrock
+
+The Anthropic adapter is backend-agnostic — `agentkit-llm-bedrock` runs the same
+loop against Claude on Bedrock. Model ids differ: Bedrock foundation ids carry an
+`anthropic.` prefix, and **application inference profiles** are account-specific
+ARNs discovered at runtime. A `ModelResolver` maps the logical ids your agents use
+onto the concrete wire ids, so nothing else changes.
+
+```java
+// Foundation / cross-region ids — set the model on AgentConfig directly:
+LlmClient llm = Bedrock.llmClient();            // AWS_REGION + default credential chain
+// AgentConfig.builder("anthropic.claude-opus-4-8")...
+
+// Application inference profiles — discover ARNs and resolve logical ids to them:
+try (BedrockClient control = BedrockClient.create()) {
+    ModelResolver resolver = InferenceProfiles.resolver(control);  // lists your app profiles
+    LlmClient llm2 = Bedrock.llmClient(resolver);
+    // AgentConfig model stays "anthropic.claude-opus-4-8"; each call is rewritten to your ARN.
+}
+```
+
+If you obtain ARNs another way (config, SSM, your own discovery), skip discovery
+and pass `ModelResolver.ofMap(yourMap)`. The example `main`s honour
+`AGENTKIT_BACKEND=bedrock` (and `AGENTKIT_BEDROCK_DISCOVER_PROFILES=true`) so the
+demos run on either backend unchanged.
 
 ## Requirements
 

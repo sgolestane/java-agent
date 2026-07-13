@@ -53,6 +53,42 @@ class AnthropicLlmClientTest {
     }
 
     @Test
+    void modelResolverRewritesTheWireModel() {
+        LlmRequest request = LlmRequest.builder("claude-opus-4-8")
+                .addMessage(Message.user("hi")).build();
+        ModelResolver resolver = ModelResolver.ofMap(Map.of(
+                "claude-opus-4-8", "arn:aws:bedrock:us-east-1:123:application-inference-profile/abc"));
+
+        MessageCreateParams params = AnthropicLlmClient.toParams(request, resolver);
+
+        assertThat(params.model().toString())
+                .contains("application-inference-profile/abc")
+                .doesNotContain("claude-opus-4-8");
+    }
+
+    @Test
+    void modelResolverOfMapPassesUnmappedIdsThrough() {
+        assertThat(ModelResolver.ofMap(Map.of("a", "b")).resolve("z")).isEqualTo("z");
+        assertThat(ModelResolver.IDENTITY.resolve("claude-opus-4-8")).isEqualTo("claude-opus-4-8");
+    }
+
+    @Test
+    void modelResolverOfMapStrictRejectsUnmappedIds() {
+        ModelResolver strict = ModelResolver.ofMapStrict(Map.of("a", "b"));
+        assertThat(strict.resolve("a")).isEqualTo("b");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> strict.resolve("z"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("z");
+    }
+
+    @Test
+    void modelResolverAndThenComposes() {
+        ModelResolver normalise = m -> m.replace("us.", "");
+        ModelResolver mapped = ModelResolver.ofMap(Map.of("anthropic.claude-opus-4-8", "arn:profile"));
+        assertThat(normalise.andThen(mapped).resolve("us.anthropic.claude-opus-4-8")).isEqualTo("arn:profile");
+    }
+
+    @Test
     void stopReasonMappingCoversAllProviderReasons() {
         assertThat(AnthropicLlmClient.mapStopReason(StopReason.TOOL_USE)).isEqualTo(LlmStopReason.TOOL_USE);
         assertThat(AnthropicLlmClient.mapStopReason(StopReason.END_TURN)).isEqualTo(LlmStopReason.END_TURN);

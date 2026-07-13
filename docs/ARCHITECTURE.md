@@ -21,9 +21,16 @@ see [`PLAN.md`](PLAN.md); for the design rationale see [`RESEARCH.md`](RESEARCH.
 ```
 agentkit-core/          provider-agnostic core: the loop + every subsystem
 agentkit-llm-anthropic/  LlmClient over the Anthropic Java SDK
+agentkit-llm-bedrock/    the Anthropic adapter on Claude via Amazon Bedrock
 agentkit-temporal/       the loop as a Temporal workflow (durable execution)
 agentkit-examples/       runnable end-to-end demos wiring it all together
 ```
+
+The Anthropic adapter is backend-agnostic: a `ModelResolver` seam translates the
+logical model id on each request into the provider's wire id, so
+`agentkit-llm-bedrock` reuses the adapter unchanged and only supplies the Bedrock
+backend plus application-inference-profile discovery (an AWS control-plane call
+that maps logical ids → account-specific profile ARNs).
 
 Only `agentkit-core` is required; the others are opt-in integrations. Dependencies
 flow one way: adapters and integrations depend on core, never the reverse.

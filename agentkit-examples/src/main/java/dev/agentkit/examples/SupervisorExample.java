@@ -44,7 +44,7 @@ public final class SupervisorExample {
                 .build();
     }
 
-    /** Runs the example against the real Anthropic API. */
+    /** Runs the example against the real Anthropic API (reads {@code ANTHROPIC_API_KEY}). */
     public static void main(String[] args) {
         LlmClient llm = AnthropicLlmClient.fromEnv();
         Supervisor supervisor = build(llm, AnthropicLlmClient.DEFAULT_MODEL);

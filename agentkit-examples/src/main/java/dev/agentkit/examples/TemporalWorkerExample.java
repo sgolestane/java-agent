@@ -57,7 +57,10 @@ public final class TemporalWorkerExample {
 
         System.out.println("stopReason=" + result.stopReason());
         System.out.println(result.output());
+
+        // Tidy shutdown; System.exit is needed because the worker threads are non-daemon.
         factory.shutdown();
+        service.shutdown();
         System.exit(0);
     }
 }

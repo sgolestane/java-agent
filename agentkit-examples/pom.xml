@@ -14,6 +14,11 @@
     <name>AgentKit Examples</name>
     <description>Runnable end-to-end examples wiring the AgentKit subsystems together.</description>
 
+    <properties>
+        <!-- Demos, not a published library. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>dev.agentkit</groupId>
@@ -22,12 +27,16 @@
         <dependency>
             <groupId>dev.agentkit</groupId>
             <artifactId>agentkit-llm-anthropic</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>dev.agentkit</groupId>
             <artifactId>agentkit-temporal</artifactId>
-            <version>${project.version}</version>
+        </dependency>
+        <!-- The main() demos are meant to be run; give them a real logging binding. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 </project>

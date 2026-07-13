@@ -3,6 +3,7 @@ package dev.agentkit.examples;
 import dev.agentkit.anthropic.AnthropicLlmClient;
 import dev.agentkit.core.agent.Agent;
 import dev.agentkit.core.agent.AgentConfig;
+import dev.agentkit.core.agent.AgentObserver;
 import dev.agentkit.core.agent.AgentResult;
 import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.context.ClearToolResultsEditor;
@@ -17,6 +18,8 @@ import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.memory.MemoryStore;
 import dev.agentkit.core.memory.MemoryTools;
 import dev.agentkit.core.memory.WorkingMemory;
+import dev.agentkit.core.reliability.RetryPolicy;
+import dev.agentkit.core.reliability.RetryingLlmClient;
 import dev.agentkit.core.reliability.ToolGates;
 import dev.agentkit.core.tool.DisclosingToolRegistry;
 import dev.agentkit.core.tool.FunctionTool;
@@ -59,11 +62,22 @@ import java.util.function.Supplier;
  */
 public final class EndToEndAgent {
 
+    /** Shared so the tool name and the gate's deny-set can never drift apart. */
+    static final String DELETE_DOCUMENT = "delete_document";
+
     private EndToEndAgent() {
     }
 
     /** The knowledge, tools, context strategy, gate, and verifier wired together. */
     public static SelfVerifyingAgent build(LlmClient llm, String model) {
+        return build(llm, model, AgentObserver.NONE);
+    }
+
+    /** As {@link #build(LlmClient, String)}, with an observer on each agent (for tests/telemetry). */
+    static SelfVerifyingAgent build(LlmClient llm, String model, AgentObserver observer) {
+        // Absorb transient model failures with backoff — the reliable client is used
+        // by the agent, the compactor, and the verifier alike.
+        LlmClient reliable = new RetryingLlmClient(llm, RetryPolicy.defaults());
         KnowledgeBase knowledge = InMemoryKnowledgeBase.bm25();
         knowledge.ingest(Document.of("returns-policy",
                 "Customers may return most items within 30 days of delivery for a full refund, "
@@ -76,7 +90,7 @@ public final class EndToEndAgent {
 
         ContextStrategy context = ContextStrategies.of(
                 new ClearToolResultsEditor(6),
-                SummarizingCompactor.builder(llm, model)
+                SummarizingCompactor.builder(reliable, model)
                         .triggerTokens(120_000).keepRecentMessages(8).build());
 
         AgentConfig config = AgentConfig.builder(model)
@@ -98,14 +112,15 @@ public final class EndToEndAgent {
                     .deferred(deleteDocumentTool())
                     .build();
 
-            return Agent.builder(llm, tools, config)
+            return Agent.builder(reliable, tools, config)
                     .contextStrategy(context)
                     // Deny the destructive tool even if the model reveals and calls it.
-                    .toolGate(ToolGates.denyTools(Set.of("delete_document")))
+                    .toolGate(ToolGates.denyTools(Set.of(DELETE_DOCUMENT)))
+                    .observer(observer)
                     .build();
         };
 
-        return new SelfVerifyingAgent(agentFactory, new LlmVerifier(llm, model), /* maxAttempts */ 3);
+        return new SelfVerifyingAgent(agentFactory, new LlmVerifier(reliable, model), /* maxAttempts */ 3);
     }
 
     private static FunctionTool orderLookupTool() {
@@ -118,7 +133,7 @@ public final class EndToEndAgent {
     }
 
     private static FunctionTool deleteDocumentTool() {
-        return FunctionTool.builder("delete_document", "Permanently delete a document (destructive)")
+        return FunctionTool.builder(DELETE_DOCUMENT, "Permanently delete a document (destructive)")
                 .schema(Map.of("type", "object",
                         "properties", Map.of("id", Map.of("type", "string")),
                         "required", List.of("id")))

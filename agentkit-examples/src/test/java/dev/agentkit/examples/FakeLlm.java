@@ -18,18 +18,26 @@ import java.util.Map;
 final class FakeLlm implements LlmClient {
 
     private final Deque<LlmResponse> script = new ArrayDeque<>();
+    private int served;
 
     FakeLlm then(LlmResponse response) {
         script.add(response);
         return this;
     }
 
+    /** Scripted responses not yet consumed — assert 0 to catch over-scripting. */
+    synchronized int remaining() {
+        return script.size();
+    }
+
     @Override
     public synchronized LlmResponse generate(LlmRequest request) {
         LlmResponse response = script.poll();
         if (response == null) {
-            throw new LlmException("FakeLlm exhausted");
+            throw new LlmException("FakeLlm exhausted after serving " + served
+                    + " responses; the script is too short for what the agent requested");
         }
+        served++;
         return response;
     }
 

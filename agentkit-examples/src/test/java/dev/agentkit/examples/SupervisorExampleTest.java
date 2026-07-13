@@ -32,5 +32,8 @@ class SupervisorExampleTest {
         assertThat(result.allSucceeded()).isTrue();
         assertThat(result.outcomes()).hasSize(2);
         assertThat(result.output()).isEqualTo("Final synthesized brief.");
+        // NB: the two subagent texts are interchangeable — they're consumed FIFO in
+        // nondeterministic thread order, so do NOT assert which subagent got which.
+        // Only the synthesis (always the 3rd, awaited-after-both) call is pinned.
     }
 }

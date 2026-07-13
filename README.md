@@ -111,6 +111,23 @@ Agent agent = new Agent(llm, tools,
 Only each skill's name + description sit in context; the model calls `read_skill`
 to load full instructions and `read_skill_resource` for bundled files on demand.
 
+### Knowledge base
+
+Ground the agent in your own data. Ingest documents and expose a search tool;
+the mechanism (chunking, BM25/vector retrieval) is provided, the data and any
+embedding model are yours:
+
+```java
+KnowledgeBase kb = InMemoryKnowledgeBase.bm25();          // or .vector(myEmbeddingModel)
+kb.ingest(Document.of("refund-policy", "Refunds within 30 days with a receipt..."));
+
+SimpleToolRegistry tools = new SimpleToolRegistry()
+        .register(KnowledgeTools.knowledgeSearchTool(kb));
+```
+
+The agent calls `knowledge_search` and receives the most relevant passages with
+their source ids.
+
 ## Requirements
 
 - Java 21+

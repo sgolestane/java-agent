@@ -91,6 +91,17 @@
                 <artifactId>url-connection-client</artifactId>
                 <version>${aws.sdk.version}</version>
             </dependency>
+            <!-- Required on the classpath for AWS SSO profile credential resolution. -->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>sso</artifactId>
+                <version>${aws.sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>ssooidc</artifactId>
+                <version>${aws.sdk.version}</version>
+            </dependency>
             <dependency>
                 <groupId>io.temporal</groupId>
                 <artifactId>temporal-sdk</artifactId>

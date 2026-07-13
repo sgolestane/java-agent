@@ -17,6 +17,9 @@
     <properties>
         <!-- Demos, not a published library. -->
         <maven.deploy.skip>true</maven.deploy.skip>
+        <!-- Default main class for `mvn -pl agentkit-examples exec:java`; override with -Dexec.mainClass=... -->
+        <exec.mainClass>dev.agentkit.examples.EndToEndAgent</exec.mainClass>
+        <exec.plugin.version>3.5.0</exec.plugin.version>
     </properties>
 
     <dependencies>
@@ -42,5 +45,31 @@
             <artifactId>slf4j-simple</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- On the classpath so an AWS SSO profile (AWS_PROFILE=...) resolves when
+             running the Bedrock demo; not needed for static keys or instance roles. -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sso</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssooidc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- `mvn -pl agentkit-examples exec:java` runs a demo main() in-process. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec.plugin.version}</version>
+                <configuration>
+                    <mainClass>${exec.mainClass}</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

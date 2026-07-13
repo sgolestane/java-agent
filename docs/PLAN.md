@@ -106,7 +106,7 @@ focused and buildable.
 - [x] Phase 6
 - [x] Phase 7
 - [x] Phase 8
-- [ ] Phase 9
+- [x] Phase 9
 - [ ] Phase 10
 
 ### Deliberate scope decisions
@@ -119,6 +119,22 @@ focused and buildable.
   partial edits (`str_replace`/`insert`) are a future addition.
 - **Compaction issues a model call**, so under the Temporal integration (Phase 9)
   the context strategy runs inside an activity, not the replayed workflow body.
+- **Durable loop v1 excludes context strategy, gating, verification, and
+  progressive disclosure.** The Temporal workflow reimplements the core agent loop
+  (model turn + tool calls as activities) but not the higher-level wrappers:
+  compaction needs its own model call (must be an activity); gating/verification
+  wrap the loop; and progressive tool disclosure would require tracking the
+  revealed-tool set as durable workflow state, so v1 advertises a **fixed** tool
+  set. These are follow-on work, not part of the v1 durable core. An LLM activity
+  that exhausts its retries yields a populated `StopReason.ERROR` result (parity
+  with in-process), not a failed workflow. Tool activities are at-least-once, so
+  non-idempotent tools should set `toolMaxAttempts = 1`.
+- **Activity split.** The workflow holds only replayable state (conversation,
+  step/usage counters, control flow) plus the serializable run config and tool
+  specs; the LLM client and tool registry live in the worker's activity
+  implementations. Serialization stays annotation-free in core — the one
+  non-obvious type, the sealed `ContentBlock`, is handled by a Jackson mix-in in
+  the Temporal module's data converter.
 - **Goal decomposition has two paths, no built-in planner.** Programmatic
   (`Supervisor.fanOut` over a caller-supplied task list, parallel) and model-driven
   (`SubagentTools.delegateTool` on a supervisor agent, sequential). A dedicated

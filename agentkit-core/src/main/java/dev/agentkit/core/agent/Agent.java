@@ -117,7 +117,7 @@ public final class Agent {
         observer.onStart(goal);
 
         Conversation conversation = new Conversation();
-        conversation.append(Message.user(renderGoal(goal)));
+        conversation.append(Message.user(goal.render()));
 
         TokenUsage totalUsage = TokenUsage.ZERO;
         int steps = 0;
@@ -234,14 +234,5 @@ public final class Agent {
             }
         }
         return uses;
-    }
-
-    private static String renderGoal(Goal goal) {
-        if (goal.parameters().isEmpty()) {
-            return goal.description();
-        }
-        StringBuilder sb = new StringBuilder(goal.description()).append("\n\nParameters:");
-        goal.parameters().forEach((k, v) -> sb.append("\n- ").append(k).append(": ").append(v));
-        return sb.toString();
     }
 }

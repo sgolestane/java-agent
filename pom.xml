@@ -17,6 +17,7 @@
         <module>agentkit-core</module>
         <module>agentkit-llm-anthropic</module>
         <module>agentkit-temporal</module>
+        <module>agentkit-examples</module>
     </modules>
 
     <properties>
@@ -51,6 +52,16 @@
             <dependency>
                 <groupId>dev.agentkit</groupId>
                 <artifactId>agentkit-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.agentkit</groupId>
+                <artifactId>agentkit-llm-anthropic</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.agentkit</groupId>
+                <artifactId>agentkit-temporal</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

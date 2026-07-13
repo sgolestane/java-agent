@@ -8,9 +8,11 @@ and long-term memory, deliberate context engineering, verification of its own
 actions, and supervisor/subagent orchestration — with an optional **Temporal**
 integration for durable execution.
 
-> Status: **early development.** See [`docs/PLAN.md`](docs/PLAN.md) for the
-> phased roadmap and [`docs/RESEARCH.md`](docs/RESEARCH.md) for the design
-> rationale.
+> Status: **0.1 — all planned subsystems complete** and tested (`0.1.0-SNAPSHOT`).
+> See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit,
+> [`docs/PLAN.md`](docs/PLAN.md) for the phased roadmap, and
+> [`docs/RESEARCH.md`](docs/RESEARCH.md) for the design rationale. Runnable,
+> fully-wired demos live in [`agentkit-examples`](agentkit-examples).
 
 ## Why
 

@@ -34,9 +34,11 @@ public final class SafePaths {
         }
         Path base = baseDir.toAbsolutePath().normalize();
         Path resolved = base.resolve(requested).normalize();
-        if (!resolved.startsWith(base)) {
+        if (!resolved.startsWith(base) || resolved.equals(base)) {
+            // Reject escapes above the base AND the base directory itself: a
+            // model-supplied key must denote a file strictly inside the base.
             throw new IllegalArgumentException(
-                    "Path '" + requested + "' escapes the permitted directory");
+                    "Path '" + requested + "' does not resolve to a location inside the permitted directory");
         }
         return resolved;
     }

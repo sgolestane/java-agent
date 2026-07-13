@@ -105,6 +105,17 @@ focused and buildable.
 - [x] Phase 5
 - [x] Phase 6
 - [ ] Phase 7
+
+### Deliberate scope decisions
+
+- **Working-memory injection** into the engineered context is a *caller
+  responsibility* (via `WorkingMemory.render()` or the `remember`/`recall`
+  tools), not automatic in the loop — keeps the `ContextStrategy` seam a pure
+  history transform.
+- **Memory tool command set** is `read`/`write`/`append`/`delete`/`list` for v1;
+  partial edits (`str_replace`/`insert`) are a future addition.
+- **Compaction issues a model call**, so under the Temporal integration (Phase 9)
+  the context strategy runs inside an activity, not the replayed workflow body.
 - [ ] Phase 8
 - [ ] Phase 9
 - [ ] Phase 10

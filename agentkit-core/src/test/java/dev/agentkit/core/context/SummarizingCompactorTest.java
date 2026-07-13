@@ -63,6 +63,26 @@ class SummarizingCompactorTest {
     }
 
     @Test
+    void overTriggerWithFewerMessagesThanWindowDoesNotCrash() {
+        // A tiny-but-huge history (over trigger) with keepRecent(6) default: cut
+        // would be negative — must clamp and return unchanged, not throw.
+        List<Message> history = List.of(Message.user("goal"), Message.assistant("a"));
+        // FakeLlmClient with no scripted responses: summarise() must not be called.
+        Compactor c = SummarizingCompactor.builder(new FakeLlmClient(), "m")
+                .triggerTokens(1).keepRecentMessages(6).build();
+        assertThat(c.compact(history)).isSameAs(history);
+    }
+
+    @Test
+    void systemPromptOverrideIsUsed() {
+        FakeLlmClient llm = new FakeLlmClient(FakeLlmClient.text("SUMMARY"));
+        Compactor c = SummarizingCompactor.builder(llm, "m")
+                .triggerTokens(1).keepRecentMessages(0).systemPrompt("CUSTOM PROMPT").build();
+        c.compact(List.of(Message.user("goal"), Message.assistant("a"), Message.user("b")));
+        assertThat(llm.received().get(0).system()).contains("CUSTOM PROMPT");
+    }
+
+    @Test
     void summarisationFailureKeepsFullHistory() {
         LlmClient failing = request -> {
             throw new LlmException("summariser down");

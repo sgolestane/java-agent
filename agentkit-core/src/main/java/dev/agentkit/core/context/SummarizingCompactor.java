@@ -23,6 +23,10 @@ import org.slf4j.LoggerFactory;
  * (its {@code tool_use} would otherwise be summarised away), so the surviving
  * transcript stays valid. On a summarisation failure the original history is
  * returned unchanged — compaction degrades gracefully rather than dropping data.
+ *
+ * <p><strong>Durability note:</strong> {@link #compact} issues a non-deterministic
+ * model call, so under a durable runner (the Temporal integration) the whole
+ * context strategy must run inside an activity, not the replayed workflow body.
  */
 public final class SummarizingCompactor implements Compactor {
 
@@ -43,6 +47,8 @@ public final class SummarizingCompactor implements Compactor {
     private final int keepRecentMessages;
     private final int summaryMaxTokens;
 
+    private final String systemPrompt;
+
     private SummarizingCompactor(Builder b) {
         this.llm = Objects.requireNonNull(b.llm, "llm");
         this.model = Objects.requireNonNull(b.model, "model");
@@ -50,6 +56,7 @@ public final class SummarizingCompactor implements Compactor {
         this.triggerTokens = b.triggerTokens;
         this.keepRecentMessages = b.keepRecentMessages;
         this.summaryMaxTokens = b.summaryMaxTokens;
+        this.systemPrompt = b.systemPrompt;
     }
 
     public static Builder builder(LlmClient llm, String model) {
@@ -61,8 +68,11 @@ public final class SummarizingCompactor implements Compactor {
         if (estimator.estimate(history) <= triggerTokens) {
             return history;
         }
-        int cut = history.size() - keepRecentMessages;
-        // Never let the surviving tail begin with an orphaned tool_result.
+        int cut = Math.max(0, history.size() - keepRecentMessages);
+        // Never let the surviving tail begin with an orphaned tool_result. This
+        // relies on the agent-loop invariant that a tool_result message directly
+        // follows the tool_use that produced it, so an orphan can only appear at
+        // the tail's first message.
         while (cut < history.size() && containsToolResult(history.get(cut))) {
             cut++;
         }
@@ -93,7 +103,7 @@ public final class SummarizingCompactor implements Compactor {
             transcript.append(message.role()).append(": ").append(renderBlocks(message)).append('\n');
         }
         LlmRequest request = LlmRequest.builder(model)
-                .system(SUMMARY_SYSTEM)
+                .system(systemPrompt)
                 .maxTokens(summaryMaxTokens)
                 .addMessage(Message.user(transcript.toString()))
                 .build();
@@ -108,7 +118,8 @@ public final class SummarizingCompactor implements Compactor {
                 case TextBlock t -> sb.append(t.text());
                 case ThinkingBlock t -> sb.append("(thinking) ").append(t.thinking());
                 case ToolUseBlock u -> sb.append("[calls ").append(u.name()).append(' ').append(u.input()).append(']');
-                case ToolResultBlock r -> sb.append("[tool result: ").append(r.content()).append(']');
+                case ToolResultBlock r -> sb.append("[tool result")
+                        .append(r.isError() ? " (error)" : "").append(": ").append(r.content()).append(']');
             }
             sb.append(' ');
         }
@@ -127,6 +138,7 @@ public final class SummarizingCompactor implements Compactor {
         private int triggerTokens = 100_000;
         private int keepRecentMessages = 6;
         private int summaryMaxTokens = 2048;
+        private String systemPrompt = SUMMARY_SYSTEM;
 
         private Builder(LlmClient llm, String model) {
             this.llm = llm;
@@ -161,6 +173,12 @@ public final class SummarizingCompactor implements Compactor {
                 throw new IllegalArgumentException("summaryMaxTokens must be > 0");
             }
             this.summaryMaxTokens = summaryMaxTokens;
+            return this;
+        }
+
+        /** Overrides the summarisation system prompt (e.g. for another language or domain). */
+        public Builder systemPrompt(String systemPrompt) {
+            this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt");
             return this;
         }
 

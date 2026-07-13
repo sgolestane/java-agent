@@ -44,6 +44,17 @@ class ConversationTest {
     }
 
     @Test
+    void replaceAllSwapsHistoryDefensively() {
+        Conversation c = new Conversation().append(Message.user("a")).append(Message.user("b"));
+        java.util.List<Message> replacement = new ArrayList<>(java.util.List.of(Message.user("x")));
+        c.replaceAll(replacement);
+
+        replacement.add(Message.user("y")); // must not leak in
+        assertThat(c.size()).isEqualTo(1);
+        assertThat(c.messages()).containsExactly(Message.user("x"));
+    }
+
+    @Test
     void constructorDefensivelyCopiesInitialList() {
         List<Message> initial = new ArrayList<>();
         initial.add(Message.user("a"));

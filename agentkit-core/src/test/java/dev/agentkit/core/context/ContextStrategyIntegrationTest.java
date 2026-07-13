@@ -47,4 +47,18 @@ class ContextStrategyIntegrationTest {
         // Every request the model received was reduced to one message by the strategy.
         assertThat(llm.received()).allSatisfy(req -> assertThat(req.messages()).hasSize(1));
     }
+
+    @Test
+    void emptyStrategyOutputFailsCleanly() {
+        var registry = new SimpleToolRegistry();
+        FakeLlmClient llm = new FakeLlmClient(FakeLlmClient.text("never reached"));
+        ContextStrategy empty = history -> List.of();
+
+        Agent agent = new Agent(llm, registry, AgentConfig.builder("m").build(),
+                AgentObserver.NONE, empty);
+        var result = agent.run(Goal.of("go"));
+
+        assertThat(result.stopReason()).isEqualTo(dev.agentkit.core.agent.StopReason.ERROR);
+        assertThat(result.error()).get().isInstanceOf(IllegalStateException.class);
+    }
 }

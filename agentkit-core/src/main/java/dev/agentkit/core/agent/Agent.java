@@ -77,6 +77,15 @@ public final class Agent {
         String lastText = "";
 
         while (steps < config.maxSteps()) {
+            // Engineer the context (edit/compact/...) and persist it, so the
+            // transformation is applied once rather than recomputed each turn.
+            List<Message> prepared = contextStrategy.prepare(conversation.messages());
+            if (prepared.isEmpty()) {
+                var ex = new IllegalStateException("Context strategy produced an empty message list");
+                return finish(AgentResult.failed(ex, steps, totalUsage));
+            }
+            conversation.replaceAll(prepared);
+
             LlmResponse response;
             try {
                 response = llm.generate(buildRequest(conversation));
@@ -123,9 +132,8 @@ public final class Agent {
     }
 
     private LlmRequest buildRequest(Conversation conversation) {
-        List<Message> messages = contextStrategy.prepare(conversation.messages());
         LlmRequest.Builder builder = LlmRequest.builder(config.model())
-                .messages(messages)
+                .messages(conversation.messages())
                 .tools(tools.advertisedSpecs())
                 .maxTokens(config.maxTokens());
         config.systemPromptValue().ifPresent(builder::system);

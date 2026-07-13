@@ -32,6 +32,19 @@ public final class Conversation {
     }
 
     /**
+     * Replaces the entire history with {@code newMessages} (defensively copied).
+     * Used by context strategies to persist an edited/compacted transcript so the
+     * transformation is not recomputed on every subsequent turn.
+     */
+    public Conversation replaceAll(List<Message> newMessages) {
+        Objects.requireNonNull(newMessages, "newMessages");
+        List<Message> copy = List.copyOf(newMessages);
+        messages.clear();
+        messages.addAll(copy);
+        return this;
+    }
+
+    /**
      * Returns an unmodifiable snapshot of the messages. The returned list is a
      * copy: subsequent {@link #append(Message)} calls do not affect it.
      */

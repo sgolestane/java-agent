@@ -27,6 +27,7 @@ public final class ToolGates {
 
     /** Denies any invocation of a tool whose name is in {@code toolNames}. */
     public static ToolGate denyTools(Set<String> toolNames) {
+        Objects.requireNonNull(toolNames, "toolNames");
         Set<String> names = Set.copyOf(toolNames);
         return denyIf(inv -> names.contains(inv.name()),
                 "This tool is blocked by policy and cannot be used.");
@@ -51,7 +52,11 @@ public final class ToolGates {
         };
     }
 
-    /** Combines gates: the invocation is allowed only if <em>every</em> gate allows it. */
+    /**
+     * Combines gates: the invocation is allowed only if <em>every</em> gate allows
+     * it. With no gates the result allows everything (fail-open) — an empty policy
+     * imposes no restriction, matching the identity of "allow unless denied".
+     */
     public static ToolGate allOf(ToolGate... gates) {
         List<ToolGate> all = List.of(gates);
         return invocation -> {

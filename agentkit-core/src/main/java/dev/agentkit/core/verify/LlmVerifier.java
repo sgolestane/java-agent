@@ -4,7 +4,6 @@ import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmRequest;
 import dev.agentkit.core.message.Message;
-import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -51,14 +50,17 @@ public final class LlmVerifier implements Verifier {
                 .build();
         String verdictText = llm.generate(request).message().text().strip();
 
-        String firstLine = verdictText.isEmpty() ? "" : verdictText.lines().findFirst().orElse("");
-        boolean passed = firstLine.toUpperCase(Locale.ROOT).startsWith("PASS");
-        if (passed) {
+        // Fail-closed: the ENTIRE first line (minus surrounding punctuation) must be
+        // the token PASS. "PASS is not warranted…" or "PASSABLE" therefore fail.
+        String firstLine = verdictText.lines().findFirst().orElse("");
+        String firstToken = firstLine.strip()
+                .replaceAll("^[^A-Za-z]+", "").replaceAll("[^A-Za-z]+$", "");
+        if (firstToken.equalsIgnoreCase("PASS")) {
             return Verdict.pass();
         }
         String feedback = verdictText.contains("\n")
                 ? verdictText.substring(verdictText.indexOf('\n') + 1).strip()
-                : verdictText;
+                : "";
         return Verdict.fail(feedback.isEmpty() ? "Output did not satisfy the goal." : feedback);
     }
 }

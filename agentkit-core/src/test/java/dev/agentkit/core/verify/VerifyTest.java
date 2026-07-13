@@ -42,6 +42,48 @@ class VerifyTest {
         assertThat(v.passed()).isFalse();
     }
 
+    @Test
+    void llmVerifierFailsClosedWhenPassIsMerelyAPrefix() {
+        // "PASS is not warranted…" must NOT be read as a pass.
+        Verdict v = new LlmVerifier(
+                new FakeLlmClient(FakeLlmClient.text("PASS is not warranted here.\nFix the totals.")), "m")
+                .verify(Goal.of("g"), "output");
+        assertThat(v.passed()).isFalse();
+        assertThat(v.feedback()).isEqualTo("Fix the totals.");
+    }
+
+    @Test
+    void llmVerifierUsesDefaultFeedbackWhenFailHasNoSecondLine() {
+        Verdict v = new LlmVerifier(new FakeLlmClient(FakeLlmClient.text("FAIL")), "m")
+                .verify(Goal.of("g"), "output");
+        assertThat(v.passed()).isFalse();
+        assertThat(v.feedback()).isEqualTo("Output did not satisfy the goal.");
+    }
+
+    // --- Verifiers (non-model) ----------------------------------------------
+
+    @Test
+    void verifiersMatchingRequiresFullMatch() {
+        Verifier v = Verifiers.matching(java.util.regex.Pattern.compile("\\d{4}"));
+        assertThat(v.verify(Goal.of("g"), "2026").passed()).isTrue();
+        assertThat(v.verify(Goal.of("g"), "year 2026").passed()).isFalse();
+    }
+
+    @Test
+    void verifiersAllOfReturnsFirstFailure() {
+        Verifier v = Verifiers.allOf(
+                Verifiers.containing("total"),
+                Verifiers.satisfies(s -> s.length() > 100, "must be detailed"));
+        Verdict verdict = v.verify(Goal.of("g"), "has total but short");
+        assertThat(verdict.passed()).isFalse();
+        assertThat(verdict.feedback()).isEqualTo("must be detailed");
+    }
+
+    @Test
+    void verifiersAllOfPassesWithNoVerifiers() {
+        assertThat(Verifiers.allOf().verify(Goal.of("g"), "anything").passed()).isTrue();
+    }
+
     // --- SelfVerifyingAgent -------------------------------------------------
 
     @Test
@@ -78,6 +120,23 @@ class VerifyTest {
 
         assertThat(r.stopReason()).isEqualTo(StopReason.VERIFICATION_FAILED);
         assertThat(r.output()).isEqualTo("a2");
+    }
+
+    @Test
+    void supplierBuildsAFreshAgentPerAttempt() {
+        FakeLlmClient llm = new FakeLlmClient(FakeLlmClient.text("a1"), FakeLlmClient.text("a2"));
+        AtomicInteger built = new AtomicInteger();
+        var attempts = new AtomicInteger();
+        AgentResult r = new SelfVerifyingAgent(
+                () -> {
+                    built.incrementAndGet();
+                    return textAgent(llm);
+                },
+                (g, o) -> attempts.getAndIncrement() == 0 ? Verdict.fail("again") : Verdict.pass(),
+                3).run(Goal.of("do it"));
+
+        assertThat(r.isSuccess()).isTrue();
+        assertThat(built).hasValue(2); // one fresh agent per attempt, not reused
     }
 
     @Test

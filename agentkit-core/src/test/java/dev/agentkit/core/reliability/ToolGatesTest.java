@@ -54,6 +54,41 @@ class ToolGatesTest {
     }
 
     @Test
+    void agentSurfacesAThrowingGateAsErrorResultAndContinues() {
+        AtomicBoolean executed = new AtomicBoolean(false);
+        var registry = new SimpleToolRegistry().register(
+                FunctionTool.builder("send_email", "sends an email")
+                        .handler(i -> {
+                            executed.set(true);
+                            return ToolResult.ok("sent");
+                        }).build());
+
+        FakeLlmClient llm = new FakeLlmClient(
+                FakeLlmClient.toolUse("t1", "send_email", Map.of("to", "x")),
+                FakeLlmClient.text("Handled the failure."));
+
+        // A gate (or confirmation handler) that throws must not abort the run.
+        ToolGate throwing = inv -> {
+            throw new IllegalStateException("confirmation backend down");
+        };
+        Agent agent = Agent.builder(llm, registry, AgentConfig.builder("m").maxSteps(5).build())
+                .toolGate(throwing)
+                .build();
+        AgentResult result = agent.run(Goal.of("email someone"));
+
+        assertThat(executed).isFalse(); // tool never ran because the gate threw first
+        assertThat(result.isSuccess()).isTrue();
+        var toolMsg = llm.received().get(1).messages().get(2);
+        assertThat(((ToolResultBlock) toolMsg.content().get(0)).isError()).isTrue();
+    }
+
+    @Test
+    void denyToolsRejectsNullSet() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ToolGates.denyTools(null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
     void agentSurfacesGateDenialAsErrorResultAndContinues() {
         AtomicBoolean executed = new AtomicBoolean(false);
         var registry = new SimpleToolRegistry().register(

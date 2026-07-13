@@ -201,19 +201,22 @@ public final class Agent {
     }
 
     private ToolResult runTool(ToolInvocation invocation) {
+        // Gate runs after lookup: an unknown tool never executes, so there is
+        // nothing to guard and the clearer "Unknown tool" message is preferable.
         Optional<Tool> tool = tools.find(invocation.name());
         if (tool.isEmpty()) {
             return ToolResult.error("Unknown tool: '" + invocation.name() + "'");
         }
-        GateResult gate = toolGate.evaluate(invocation);
-        if (!gate.allowed()) {
-            log.info("Tool '{}' blocked by gate: {}", invocation.name(), gate.reason());
-            return ToolResult.error(gate.reason());
-        }
         try {
+            GateResult gate = toolGate.evaluate(invocation);
+            if (!gate.allowed()) {
+                log.info("Tool '{}' blocked by gate: {}", invocation.name(), gate.reason());
+                return ToolResult.error(gate.reason());
+            }
             return tool.get().execute(invocation);
         } catch (RuntimeException e) {
-            log.warn("Tool '{}' threw", invocation.name(), e);
+            // A thrown gate/confirmation handler or tool must not abort the run.
+            log.warn("Tool '{}' failed (gate or execution threw)", invocation.name(), e);
             return ToolResult.error("Tool '" + invocation.name() + "' failed: " + e.getMessage());
         }
     }

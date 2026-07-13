@@ -187,6 +187,11 @@ AgentResult result = verified.run(Goal.of("Produce a reconciled Q3 report"));
 // result.stopReason() == VERIFICATION_FAILED if it never passed the critic.
 ```
 
+Not every check needs a model. `Verifiers` supplies deterministic checks —
+`matching(pattern)`, `containing(text)`, `satisfies(predicate, reason)` — and
+`Verifiers.allOf(...)` composes a cheap structural check ahead of the LLM critic
+so a run is gated on both, short-circuiting before spending a call.
+
 ## Requirements
 
 - Java 21+

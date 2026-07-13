@@ -23,6 +23,16 @@
             <groupId>io.temporal</groupId>
             <artifactId>temporal-sdk</artifactId>
         </dependency>
+        <!-- Used directly by the data converter and boundary annotations; declared
+             explicitly rather than relied on transitively through temporal-sdk. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
 
         <!-- Temporal's in-memory test environment (no external server needed). -->
         <dependency>

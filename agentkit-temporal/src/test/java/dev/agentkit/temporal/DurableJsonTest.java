@@ -53,6 +53,24 @@ class DurableJsonTest {
     }
 
     @Test
+    void preservesNestedAndTypedToolInputValues() throws Exception {
+        Message original = Message.of(Role.ASSISTANT,
+                new ToolUseBlock("t1", "query", Map.of(
+                        "limit", 5,
+                        "enabled", true,
+                        "filter", Map.of("field", "name", "op", "eq"),
+                        "tags", List.of("a", "b"))));
+
+        ToolUseBlock block = (ToolUseBlock) roundTrip(original).content().get(0);
+
+        // JSON has no int/long distinction, so an integer re-hydrates as Integer 5.
+        assertThat(block.input()).containsEntry("limit", 5);
+        assertThat(block.input()).containsEntry("enabled", true);
+        assertThat(block.input().get("filter")).isEqualTo(Map.of("field", "name", "op", "eq"));
+        assertThat(block.input().get("tags")).isEqualTo(List.of("a", "b"));
+    }
+
+    @Test
     void discriminatorIsWrittenIntoTheJson() throws Exception {
         String json = mapper.writeValueAsString(
                 Message.of(Role.USER, List.of(TextBlock.of("hi"))));

@@ -11,7 +11,9 @@ import dev.agentkit.core.message.Role;
 import dev.agentkit.core.message.TextBlock;
 import dev.agentkit.core.message.ToolUseBlock;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -35,6 +37,7 @@ final class ScriptedLlm implements LlmClient {
 
     private final Deque<Entry> script = new ArrayDeque<>();
     private final AtomicInteger calls = new AtomicInteger();
+    private final List<LlmRequest> requests = new ArrayList<>();
 
     ScriptedLlm then(LlmResponse response) {
         script.add(new Reply(response));
@@ -51,9 +54,15 @@ final class ScriptedLlm implements LlmClient {
         return calls.get();
     }
 
+    /** The requests received so far, in order (thread-safe snapshot). */
+    synchronized List<LlmRequest> requests() {
+        return List.copyOf(requests);
+    }
+
     @Override
     public synchronized LlmResponse generate(LlmRequest request) {
         calls.incrementAndGet();
+        requests.add(request);
         Entry entry = script.poll();
         if (entry == null) {
             throw new LlmException("ScriptedLlm exhausted after " + calls.get() + " calls");
@@ -71,13 +80,39 @@ final class ScriptedLlm implements LlmClient {
                 LlmStopReason.END_TURN, TokenUsage.ZERO);
     }
 
+    static LlmResponse textWithUsage(String text, TokenUsage usage) {
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+                LlmStopReason.END_TURN, usage);
+    }
+
     static LlmResponse toolUse(String id, String name, Map<String, Object> input) {
+        return toolUseWithUsage(id, name, input, TokenUsage.ZERO);
+    }
+
+    static LlmResponse toolUseWithUsage(String id, String name, Map<String, Object> input,
+                                        TokenUsage usage) {
         return LlmResponse.of(Message.of(Role.ASSISTANT, new ToolUseBlock(id, name, input)),
+                LlmStopReason.TOOL_USE, usage);
+    }
+
+    /** An assistant turn carrying several tool_use blocks at once. */
+    static LlmResponse multiToolUse(List<ToolUseBlock> blocks) {
+        return LlmResponse.of(Message.of(Role.ASSISTANT, List.copyOf(blocks)),
                 LlmStopReason.TOOL_USE, TokenUsage.ZERO);
     }
 
     static LlmResponse refusal(String text) {
         return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
                 LlmStopReason.REFUSAL, TokenUsage.ZERO);
+    }
+
+    static LlmResponse maxTokens(String text) {
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+                LlmStopReason.MAX_TOKENS, TokenUsage.ZERO);
+    }
+
+    static LlmResponse pause(String text) {
+        return LlmResponse.of(Message.of(Role.ASSISTANT, TextBlock.of(text)),
+                LlmStopReason.PAUSE, TokenUsage.ZERO);
     }
 }

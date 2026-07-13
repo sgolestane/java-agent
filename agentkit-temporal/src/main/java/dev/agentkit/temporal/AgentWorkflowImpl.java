@@ -1,7 +1,6 @@
 package dev.agentkit.temporal;
 
 import dev.agentkit.core.agent.AgentConfig;
-import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.agent.StopReason;
 import dev.agentkit.core.llm.TokenUsage;
 import dev.agentkit.core.message.ContentBlock;
@@ -13,6 +12,7 @@ import dev.agentkit.core.tool.ToolInvocation;
 import dev.agentkit.core.tool.ToolResult;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
+import io.temporal.failure.ActivityFailure;
 import io.temporal.workflow.Workflow;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -26,10 +26,22 @@ import org.slf4j.Logger;
  * execution — to activities. All control flow, the conversation history, and the
  * step/usage counters live in the workflow, so Temporal can replay them exactly.
  *
- * <p>The loop deliberately does not run a context strategy: compaction issues its
- * own model call and must therefore be an activity, which is left to a later
- * iteration. Verification and tool gating likewise wrap the loop rather than
- * living inside it.
+ * <p><strong>Parity and limits versus the in-process loop.</strong> Stop-reason
+ * handling, step counting, and tool extraction match {@code Agent} exactly, and
+ * an LLM activity that exhausts its retries yields an {@link StopReason#ERROR}
+ * result (as in-process), not a failed workflow. Two things intentionally differ
+ * in v1:
+ * <ul>
+ *   <li><em>Fixed tool set.</em> The advertised tools are taken once from
+ *       {@link DurableAgentRun#tools()}; progressive disclosure (a registry that
+ *       reveals tools mid-run) is not applied, because the revealed set is
+ *       mutable state that would have to be tracked durably in the workflow.</li>
+ *   <li><em>No context strategy, gating, or verification inside the loop.</em>
+ *       Compaction issues its own model call (a future activity); gating and
+ *       verification wrap the loop rather than living in it. In particular a
+ *       {@code ToolGate} is <em>not</em> enforced here — gate at the tool
+ *       implementation or wrap the run.</li>
+ * </ul>
  */
 public final class AgentWorkflowImpl implements AgentWorkflow {
 
@@ -43,7 +55,7 @@ public final class AgentWorkflowImpl implements AgentWorkflow {
                 Workflow.newActivityStub(ToolActivities.class, toolOptions(input.options()));
 
         List<Message> conversation = new ArrayList<>();
-        conversation.add(Message.user(renderGoal(input.goal())));
+        conversation.add(Message.user(input.goal().render()));
 
         TokenUsage totalUsage = TokenUsage.ZERO;
         int steps = 0;
@@ -52,7 +64,18 @@ public final class AgentWorkflowImpl implements AgentWorkflow {
         while (steps < config.maxSteps()) {
             LlmCallSpec spec = new LlmCallSpec(config.model(), config.systemPrompt(),
                     conversation, input.tools(), config.maxTokens(), config.options());
-            LlmTurn turn = llm.generate(spec);
+            LlmTurn turn;
+            try {
+                turn = llm.generate(spec);
+            } catch (ActivityFailure e) {
+                // The LLM activity exhausted its retries. Mirror the in-process
+                // Agent: return a populated ERROR result rather than failing the
+                // whole workflow, so callers get the partial steps/usage and a
+                // message they can act on.
+                log.warn("LLM activity failed after retries on step {}", steps + 1, e);
+                return new AgentRunResult(StopReason.ERROR, lastText, steps, totalUsage,
+                        messageOf(e));
+            }
 
             steps++;
             totalUsage = totalUsage.plus(turn.usage());
@@ -122,12 +145,9 @@ public final class AgentWorkflowImpl implements AgentWorkflow {
         return uses;
     }
 
-    private static String renderGoal(Goal goal) {
-        if (goal.parameters().isEmpty()) {
-            return goal.description();
-        }
-        StringBuilder sb = new StringBuilder(goal.description()).append("\n\nParameters:");
-        goal.parameters().forEach((k, v) -> sb.append("\n- ").append(k).append(": ").append(v));
-        return sb.toString();
+    private static String messageOf(ActivityFailure e) {
+        Throwable cause = e.getCause();
+        String message = cause != null ? cause.getMessage() : e.getMessage();
+        return message != null ? message : "LLM activity failed";
     }
 }

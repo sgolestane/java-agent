@@ -10,6 +10,8 @@ package dev.agentkit.temporal;
  * transiently (rate limits, network blips) and so retries; the tool activity
  * already converts a failed tool into an error result the model reacts to, so
  * its retry count guards only against genuinely transient infrastructure faults.
+ * Because retry is at-least-once, set {@code toolMaxAttempts} to 1 for a tool
+ * whose side effect is not idempotent (see {@link ToolActivities}).
  *
  * @param llmStartToCloseSeconds  per-attempt timeout for an LLM call
  * @param llmMaxAttempts          max attempts for an LLM call (>= 1)

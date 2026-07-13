@@ -32,4 +32,18 @@ public record Goal(String description, Map<String, Object> parameters) {
     public static Goal of(String description) {
         return new Goal(description, Map.of());
     }
+
+    /**
+     * Renders the goal as prompt text: the description, followed by a
+     * deterministically-ordered list of parameters if any are present. Shared by
+     * the in-process and durable loops so they cannot drift on goal formatting.
+     */
+    public String render() {
+        if (parameters.isEmpty()) {
+            return description;
+        }
+        StringBuilder sb = new StringBuilder(description).append("\n\nParameters:");
+        parameters.forEach((k, v) -> sb.append("\n- ").append(k).append(": ").append(v));
+        return sb.toString();
+    }
 }

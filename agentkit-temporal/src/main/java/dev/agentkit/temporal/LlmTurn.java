@@ -3,6 +3,7 @@ package dev.agentkit.temporal;
 import dev.agentkit.core.llm.LlmStopReason;
 import dev.agentkit.core.llm.TokenUsage;
 import dev.agentkit.core.message.Message;
+import java.util.Objects;
 
 /**
  * The serializable result of one LLM activity call.
@@ -16,4 +17,10 @@ import dev.agentkit.core.message.Message;
  * @param usage      token accounting for the call
  */
 public record LlmTurn(Message message, LlmStopReason stopReason, TokenUsage usage) {
+
+    public LlmTurn {
+        Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(stopReason, "stopReason");
+        Objects.requireNonNull(usage, "usage");
+    }
 }

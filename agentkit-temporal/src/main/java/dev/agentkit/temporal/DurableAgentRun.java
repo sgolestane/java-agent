@@ -27,6 +27,7 @@ public record DurableAgentRun(Goal goal, AgentConfig config, List<ToolSpec> tool
     public DurableAgentRun {
         Objects.requireNonNull(goal, "goal");
         Objects.requireNonNull(config, "config");
+        Objects.requireNonNull(tools, "tools");
         Objects.requireNonNull(options, "options");
         tools = List.copyOf(tools);
     }

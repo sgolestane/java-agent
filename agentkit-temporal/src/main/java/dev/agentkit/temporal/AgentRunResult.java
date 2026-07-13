@@ -42,10 +42,15 @@ public record AgentRunResult(StopReason stopReason, String output, int steps, To
         return new AgentRunResult(reason, output, steps, usage, "");
     }
 
-    /** Adapts an in-process {@link AgentResult} to its serializable form. */
+    /**
+     * Adapts an in-process {@link AgentResult} to its serializable form — useful
+     * for callers that run an agent in-process but want to persist or return the
+     * durable result shape. {@code Optional.map} already collapses a null
+     * {@code getMessage()} to {@code ""}, so no extra null guard is needed.
+     */
     public static AgentRunResult from(AgentResult result) {
         String message = result.error().map(Throwable::getMessage).orElse("");
         return new AgentRunResult(result.stopReason(), result.output(), result.steps(),
-                result.usage(), message == null ? "" : message);
+                result.usage(), message);
     }
 }

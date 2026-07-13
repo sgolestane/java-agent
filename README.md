@@ -249,8 +249,13 @@ AgentRunResult result = TemporalAgent.newStub(client, "agentkit")
 
 Model inference and tool execution run as activities with their own retry
 policies; the conversation, step counter, and control flow live in the workflow
-so Temporal replays them exactly. (Context compaction issues its own model call,
-so it belongs in an activity — deferred to a later iteration.)
+so Temporal replays them exactly. An LLM activity that exhausts its retries yields
+a populated `ERROR` result (parity with in-process), not a failed workflow.
+
+v1 durable notes: the tool set is fixed for the run (progressive disclosure would
+need the revealed set tracked as durable state); context compaction issues its own
+model call, so it belongs in a future activity; and because activity retry is
+at-least-once, a non-idempotent tool should set `toolMaxAttempts = 1`.
 
 ## Requirements
 

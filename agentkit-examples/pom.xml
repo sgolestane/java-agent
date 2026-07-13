@@ -61,13 +61,23 @@
 
     <build>
         <plugins>
-            <!-- `mvn -pl agentkit-examples exec:java` runs a demo main() in-process. -->
+            <!-- `mvn -f agentkit-examples/pom.xml exec:exec` forks a JVM to run a demo
+                 main() over the full runtime classpath. exec:exec (fork) is used rather
+                 than exec:java (in-process) because the in-process plexus classloader
+                 mishandles the AWS SDK's classloading (NoClassDefFoundError / "sso module
+                 must be on the class path" even when the jars are present). -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${exec.plugin.version}</version>
                 <configuration>
-                    <mainClass>${exec.mainClass}</mainClass>
+                    <executable>java</executable>
+                    <classpathScope>runtime</classpathScope>
+                    <arguments>
+                        <argument>-classpath</argument>
+                        <classpath/>
+                        <argument>${exec.mainClass}</argument>
+                    </arguments>
                 </configuration>
             </plugin>
         </plugins>

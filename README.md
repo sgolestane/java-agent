@@ -297,15 +297,17 @@ export AGENTKIT_BACKEND=bedrock
 export AGENTKIT_BEDROCK_DISCOVER_PROFILES=true      # map logical ids → your profile ARNs
 
 mvn install -DskipTests                            # once — publish the modules locally
-mvn -f agentkit-examples/pom.xml exec:java \        # run the demo IN the examples module
+mvn -f agentkit-examples/pom.xml exec:exec \        # fork a JVM to run the demo main()
     -Dexec.mainClass=dev.agentkit.examples.EndToEndAgent
 ```
 
-Run the demo *inside* the module (`-f agentkit-examples/pom.xml`, or `cd
-agentkit-examples` first) — `exec:java` is not tied to a build phase, so
-`-pl agentkit-examples` would run it against the aggregator root (a
-`ClassNotFoundException`) instead. The one-time `mvn install` lets the module
-resolve its sibling jars from your local repository.
+Two things matter in that command: run *inside* the module (`-f
+agentkit-examples/pom.xml`, or `cd agentkit-examples` first) so the goal doesn't
+run against the aggregator root, and use **`exec:exec`** (forks a JVM), not
+`exec:java` — the in-process runner's classloader mishandles the AWS SDK and fails
+with a spurious *"the 'sso' service module must be on the class path"* even though
+the jars are present. The one-time `mvn install` lets the module resolve its
+sibling jars from your local repository.
 
 The `agentkit-examples` module bundles the AWS `sso`/`ssooidc` modules so an SSO
 profile resolves out of the box; a library that uses SSO must add those two AWS

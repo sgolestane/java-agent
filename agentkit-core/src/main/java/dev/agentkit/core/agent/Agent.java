@@ -3,6 +3,8 @@ package dev.agentkit.core.agent;
 import dev.agentkit.core.context.ContextStrategy;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmRequest;
+import dev.agentkit.core.reliability.GateResult;
+import dev.agentkit.core.reliability.ToolGate;
 import dev.agentkit.core.llm.LlmResponse;
 import dev.agentkit.core.llm.LlmStopReason;
 import dev.agentkit.core.llm.TokenUsage;
@@ -46,6 +48,7 @@ public final class Agent {
     private final AgentConfig config;
     private final AgentObserver observer;
     private final ContextStrategy contextStrategy;
+    private final ToolGate toolGate;
 
     public Agent(LlmClient llm, ToolRegistry tools, AgentConfig config) {
         this(llm, tools, config, AgentObserver.NONE, ContextStrategy.IDENTITY);
@@ -57,11 +60,55 @@ public final class Agent {
 
     public Agent(LlmClient llm, ToolRegistry tools, AgentConfig config, AgentObserver observer,
                  ContextStrategy contextStrategy) {
-        this.llm = Objects.requireNonNull(llm, "llm");
-        this.tools = Objects.requireNonNull(tools, "tools");
-        this.config = Objects.requireNonNull(config, "config");
-        this.observer = Objects.requireNonNull(observer, "observer");
-        this.contextStrategy = Objects.requireNonNull(contextStrategy, "contextStrategy");
+        this(builder(llm, tools, config).observer(observer).contextStrategy(contextStrategy));
+    }
+
+    private Agent(Builder b) {
+        this.llm = Objects.requireNonNull(b.llm, "llm");
+        this.tools = Objects.requireNonNull(b.tools, "tools");
+        this.config = Objects.requireNonNull(b.config, "config");
+        this.observer = Objects.requireNonNull(b.observer, "observer");
+        this.contextStrategy = Objects.requireNonNull(b.contextStrategy, "contextStrategy");
+        this.toolGate = Objects.requireNonNull(b.toolGate, "toolGate");
+    }
+
+    public static Builder builder(LlmClient llm, ToolRegistry tools, AgentConfig config) {
+        return new Builder(llm, tools, config);
+    }
+
+    /** Fluent construction with optional observer, context strategy, and tool gate. */
+    public static final class Builder {
+        private final LlmClient llm;
+        private final ToolRegistry tools;
+        private final AgentConfig config;
+        private AgentObserver observer = AgentObserver.NONE;
+        private ContextStrategy contextStrategy = ContextStrategy.IDENTITY;
+        private ToolGate toolGate = ToolGate.ALLOW_ALL;
+
+        private Builder(LlmClient llm, ToolRegistry tools, AgentConfig config) {
+            this.llm = llm;
+            this.tools = tools;
+            this.config = config;
+        }
+
+        public Builder observer(AgentObserver observer) {
+            this.observer = observer;
+            return this;
+        }
+
+        public Builder contextStrategy(ContextStrategy contextStrategy) {
+            this.contextStrategy = contextStrategy;
+            return this;
+        }
+
+        public Builder toolGate(ToolGate toolGate) {
+            this.toolGate = toolGate;
+            return this;
+        }
+
+        public Agent build() {
+            return new Agent(this);
+        }
     }
 
     /** Runs the agent to pursue {@code goal}. */
@@ -157,6 +204,11 @@ public final class Agent {
         Optional<Tool> tool = tools.find(invocation.name());
         if (tool.isEmpty()) {
             return ToolResult.error("Unknown tool: '" + invocation.name() + "'");
+        }
+        GateResult gate = toolGate.evaluate(invocation);
+        if (!gate.allowed()) {
+            log.info("Tool '{}' blocked by gate: {}", invocation.name(), gate.reason());
+            return ToolResult.error(gate.reason());
         }
         try {
             return tool.get().execute(invocation);

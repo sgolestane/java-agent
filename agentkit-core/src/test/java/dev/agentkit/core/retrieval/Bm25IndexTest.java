@@ -41,6 +41,26 @@ class Bm25IndexTest {
     }
 
     @Test
+    void emptyCorpusReturnsNothing() {
+        assertThat(Bm25Index.of(Map.of()).search("anything", 5)).isEmpty();
+    }
+
+    @Test
+    void nonPositiveLimitThrows() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> sampleIndex().search("weather", 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void tiesAreBrokenByIdDeterministically() {
+        Map<String, String> docs = new LinkedHashMap<>();
+        docs.put("b", "apple");
+        docs.put("a", "apple");
+        List<Bm25Index.Scored> hits = Bm25Index.of(docs).search("apple", 5);
+        assertThat(hits).extracting(Bm25Index.Scored::id).containsExactly("a", "b");
+    }
+
+    @Test
     void tokenizerSplitsOnNonAlphanumeric() {
         assertThat(Bm25Index.tokenize("Hello, World! foo_bar-baz42"))
                 .containsExactly("hello", "world", "foo", "bar", "baz42");

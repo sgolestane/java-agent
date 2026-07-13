@@ -76,6 +76,68 @@ class DisclosingToolRegistryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    private static ToolResult search(DisclosingToolRegistry registry, String query) {
+        return registry.find(DisclosingToolRegistry.DEFAULT_SEARCH_TOOL_NAME).orElseThrow()
+                .execute(new ToolInvocation("s", "search_tools", Map.of("query", query)));
+    }
+
+    @Test
+    void noMatchReturnsOkGuidance() {
+        DisclosingToolRegistry registry = registry();
+        ToolResult result = search(registry, "zzzzzz nonsense qqqq");
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).contains("No new tools matched");
+        assertThat(registry.revealedNames()).doesNotContain("get_weather", "send_email");
+    }
+
+    @Test
+    void searchOnlySurfacesDeferredNotAlwaysAvailable() {
+        DisclosingToolRegistry registry = registry();
+        // "produce the final answer" describes the always-available 'finish' tool,
+        // but search must never reveal/return it (it is not deferred).
+        ToolResult result = search(registry, "produce the final answer");
+        assertThat(result.content()).doesNotContain("finish");
+    }
+
+    @Test
+    void searchLimitCapsRevealedCount() {
+        DisclosingToolRegistry registry = DisclosingToolRegistry.builder()
+                .deferred(tool("send_email", "send an email message"))
+                .deferred(tool("send_sms", "send an sms message"))
+                .searchLimit(1)
+                .build();
+        search(registry, "send message");
+        assertThat(registry.revealedNames()).hasSize(1);
+    }
+
+    @Test
+    void advertisedOrderIsSearchToolThenRevealOrder() {
+        DisclosingToolRegistry registry = registry();
+        search(registry, "email recipient");   // reveals send_email
+        search(registry, "weather forecast");  // reveals get_weather
+        assertThat(registry.advertisedSpecs()).extracting(ToolSpec::name)
+                .containsExactly("search_tools", "finish", "send_email", "get_weather");
+    }
+
+    @Test
+    void revealMethodSurfacesToolWithoutSearch() {
+        DisclosingToolRegistry registry = registry();
+        registry.reveal("send_email");
+        assertThat(registry.advertisedSpecs()).extracting(ToolSpec::name).contains("send_email");
+        registry.reveal("nonexistent"); // no-op
+        assertThat(registry.advertisedSpecs()).extracting(ToolSpec::name).doesNotContain("nonexistent");
+    }
+
+    @Test
+    void customSearchToolNameIsUsed() {
+        DisclosingToolRegistry registry = DisclosingToolRegistry.builder()
+                .searchToolName("find_tools")
+                .deferred(tool("x", "some capability"))
+                .build();
+        assertThat(registry.find("find_tools")).isPresent();
+        assertThat(registry.advertisedSpecs()).extracting(ToolSpec::name).contains("find_tools");
+    }
+
     @Test
     void agentDiscoversAndCallsDeferredTool() {
         DisclosingToolRegistry registry = registry();

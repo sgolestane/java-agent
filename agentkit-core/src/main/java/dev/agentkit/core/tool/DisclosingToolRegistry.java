@@ -15,16 +15,26 @@ import java.util.Set;
  *
  * <p>Tools are registered as either <em>always-available</em> (advertised to the
  * model from the first turn) or <em>deferred</em> (hidden until discovered). A
- * synthetic {@code search_tools} tool is advertised whenever any tool remains
- * unrevealed; when the model calls it, the best-matching tools are revealed and
- * become available on subsequent turns. This keeps the fixed context small while
- * supporting large tool libraries, and — because tool specs are only ever
- * <em>added</em>, never removed — it preserves the provider prompt cache.
+ * synthetic {@code search_tools} tool is advertised whenever the library contains
+ * any deferred tools; when the model calls it, the best-matching <em>deferred</em>
+ * tools are revealed and become available on subsequent turns.
+ *
+ * <p><strong>Advertised order is a stable, growing prefix:</strong> the search
+ * tool (if present) sits first, followed by revealed tools in the order they were
+ * revealed. New reveals only ever append, so the serialized tool block grows
+ * monotonically and the provider prompt cache is preserved.
+ *
+ * <p><strong>Disclosure gates advertising, not authorization.</strong> A deferred
+ * tool remains resolvable via {@link #find(String)} and therefore executable if
+ * the model calls it by name before revealing it — this is deliberate robustness
+ * (a model may recall a tool across turns). Use always-available vs deferred to
+ * control what the model <em>sees</em>, not what it is <em>permitted</em> to run;
+ * for authorization/gating see the verification subsystem.
  *
  * <p><strong>State:</strong> the set of revealed tools is mutated as a run
  * progresses, so a registry instance is <em>per-run</em>. Build a fresh registry
  * for each agent run (construction is cheap; the BM25 index is built once here).
- * It is not thread-safe.
+ * It is not thread-safe and must not be shared across concurrent runs.
  */
 public final class DisclosingToolRegistry implements ToolRegistry {
 
@@ -32,25 +42,34 @@ public final class DisclosingToolRegistry implements ToolRegistry {
     public static final String DEFAULT_SEARCH_TOOL_NAME = "search_tools";
 
     private final Map<String, Tool> all;
+    private final Set<String> deferredNames;
     private final Set<String> revealed;
-    private final Bm25Index index;
+    private final Bm25Index deferredIndex;
     private final int searchLimit;
     private final Tool searchTool;
 
     private DisclosingToolRegistry(Builder b) {
-        this.all = new LinkedHashMap<>(b.all);
-        this.revealed = new LinkedHashSet<>(b.alwaysAvailable);
-        this.searchLimit = b.searchLimit;
-
-        Map<String, String> corpus = new LinkedHashMap<>();
-        this.all.forEach((name, tool) -> corpus.put(name, name + " " + tool.description()));
-        this.index = Bm25Index.of(corpus);
-
-        this.searchTool = buildSearchTool(b.searchToolName);
-        if (all.containsKey(b.searchToolName)) {
+        if (b.all.containsKey(b.searchToolName)) {
             throw new IllegalArgumentException(
                     "A registered tool collides with the search tool name '" + b.searchToolName + "'");
         }
+        this.all = new LinkedHashMap<>(b.all);
+        this.searchLimit = b.searchLimit;
+
+        // revealed starts with the always-available tools, in registration order.
+        this.revealed = new LinkedHashSet<>(b.alwaysAvailable);
+
+        // deferred = everything else, in registration order.
+        this.deferredNames = new LinkedHashSet<>(all.keySet());
+        this.deferredNames.removeAll(b.alwaysAvailable);
+
+        Map<String, String> corpus = new LinkedHashMap<>();
+        for (String name : deferredNames) {
+            corpus.put(name, name + " " + all.get(name).description());
+        }
+        this.deferredIndex = Bm25Index.of(corpus);
+
+        this.searchTool = buildSearchTool(b.searchToolName);
     }
 
     public static Builder builder() {
@@ -65,6 +84,11 @@ public final class DisclosingToolRegistry implements ToolRegistry {
         return Optional.ofNullable(all.get(name));
     }
 
+    /**
+     * All registered user tools, in registration order. Excludes the synthetic
+     * search tool (which is resolvable via {@link #find(String)} but is not a
+     * user-registered capability).
+     */
     @Override
     public List<Tool> tools() {
         return List.copyOf(all.values());
@@ -73,24 +97,30 @@ public final class DisclosingToolRegistry implements ToolRegistry {
     @Override
     public List<ToolSpec> advertisedSpecs() {
         List<ToolSpec> specs = new ArrayList<>();
-        for (Tool tool : all.values()) {
-            if (revealed.contains(tool.name())) {
-                specs.add(tool.spec());
-            }
-        }
-        if (hasUnrevealed()) {
+        if (!deferredNames.isEmpty()) {
             specs.add(searchTool.spec());
+        }
+        for (String name : revealed) {
+            specs.add(all.get(name).spec());
         }
         return List.copyOf(specs);
     }
 
-    /** The names currently revealed to the model. */
-    public Set<String> revealedNames() {
-        return Set.copyOf(revealed);
+    /**
+     * Reveals a registered tool by name, making it advertised from now on. No-op
+     * if the name is unknown or already revealed. Lets later subsystems (skills,
+     * knowledge base) force-surface a tool without a search.
+     */
+    public DisclosingToolRegistry reveal(String name) {
+        if (all.containsKey(name)) {
+            revealed.add(name);
+        }
+        return this;
     }
 
-    private boolean hasUnrevealed() {
-        return revealed.size() < all.size();
+    /** The names currently revealed to the model, in reveal order. */
+    public Set<String> revealedNames() {
+        return new LinkedHashSet<>(revealed);
     }
 
     private Tool buildSearchTool(String name) {
@@ -113,16 +143,27 @@ public final class DisclosingToolRegistry implements ToolRegistry {
         if (query == null || query.isBlank()) {
             return ToolResult.error("The 'query' argument is required and must be non-blank.");
         }
-        List<Bm25Index.Scored> hits = index.search(query, searchLimit);
-        if (hits.isEmpty()) {
-            return ToolResult.ok("No tools matched \"" + query + "\". Try different keywords.");
+        if (deferredIndex.size() == 0) {
+            return ToolResult.ok("There are no additional tools to discover.");
         }
-        StringBuilder sb = new StringBuilder("Revealed ").append(hits.size())
-                .append(" tool(s) — you can now call them:\n");
+        // Rank all deferred tools, then take the top-N that are not already revealed.
+        List<Bm25Index.Scored> hits = deferredIndex.search(query, deferredIndex.size());
+        List<String> newlyRevealed = new ArrayList<>();
         for (Bm25Index.Scored hit : hits) {
-            revealed.add(hit.id());
-            Tool tool = all.get(hit.id());
-            sb.append("- ").append(tool.name()).append(": ").append(tool.description()).append('\n');
+            if (revealed.add(hit.id())) {
+                newlyRevealed.add(hit.id());
+                if (newlyRevealed.size() >= searchLimit) {
+                    break;
+                }
+            }
+        }
+        if (newlyRevealed.isEmpty()) {
+            return ToolResult.ok("No new tools matched \"" + query + "\". Try different keywords.");
+        }
+        StringBuilder sb = new StringBuilder("Revealed ").append(newlyRevealed.size())
+                .append(" tool(s) — you can now call them:\n");
+        for (String name : newlyRevealed) {
+            sb.append("- ").append(name).append(": ").append(all.get(name).description()).append('\n');
         }
         return ToolResult.ok(sb.toString().stripTrailing());
     }

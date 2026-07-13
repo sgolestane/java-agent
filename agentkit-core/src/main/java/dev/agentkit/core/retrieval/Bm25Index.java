@@ -84,6 +84,11 @@ public final class Bm25Index {
     /**
      * Returns up to {@code limit} documents ranked by BM25 score, highest first.
      * Documents with a non-positive score (no query term matched) are excluded.
+     * Ties are broken by id for reproducibility.
+     *
+     * <p>This is a linear scan over the corpus (O(N·|query terms|) per call), with
+     * no inverted index — appropriate for the small-to-moderate corpora used for
+     * tool disclosure and knowledge-base retrieval, not for web-scale search.
      */
     public List<Scored> search(String query, int limit) {
         Objects.requireNonNull(query, "query");
@@ -107,14 +112,20 @@ public final class Bm25Index {
                 }
                 int df = docFreq.getOrDefault(term, 0);
                 double idf = Math.log(1 + (n - df + 0.5) / (df + 0.5));
-                double denom = f + K1 * (1 - B + B * docLengths[d] / avgDocLength);
+                // avgDocLength is > 0 here: a matching term (f != null) implies a
+                // non-empty document, which implies a non-empty corpus.
+                double lengthNorm = avgDocLength == 0 ? 0 : docLengths[d] / avgDocLength;
+                double denom = f + K1 * (1 - B + B * lengthNorm);
                 score += idf * (f * (K1 + 1)) / denom;
             }
             if (score > 0) {
                 scored.add(new Scored(ids.get(d), score));
             }
         }
-        scored.sort((a, b) -> Double.compare(b.score(), a.score()));
+        // Descending by score, with id as a deterministic tiebreak so ranking is
+        // reproducible regardless of the input map's iteration order.
+        scored.sort(java.util.Comparator.comparingDouble(Bm25Index.Scored::score).reversed()
+                .thenComparing(Bm25Index.Scored::id));
         return scored.size() > limit ? List.copyOf(scored.subList(0, limit)) : List.copyOf(scored);
     }
 

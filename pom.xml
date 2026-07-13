@@ -16,6 +16,7 @@
     <modules>
         <module>agentkit-core</module>
         <module>agentkit-llm-anthropic</module>
+        <module>agentkit-llm-bedrock</module>
         <module>agentkit-temporal</module>
         <module>agentkit-examples</module>
     </modules>
@@ -33,6 +34,7 @@
 
         <!-- Dependency versions -->
         <anthropic.sdk.version>2.48.0</anthropic.sdk.version>
+        <aws.sdk.version>2.46.8</aws.sdk.version>
         <temporal.sdk.version>1.27.0</temporal.sdk.version>
         <!-- Aligned with the version temporal-sdk brings transitively. -->
         <jackson.version>2.19.4</jackson.version>
@@ -61,6 +63,11 @@
             </dependency>
             <dependency>
                 <groupId>dev.agentkit</groupId>
+                <artifactId>agentkit-llm-bedrock</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.agentkit</groupId>
                 <artifactId>agentkit-temporal</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -68,6 +75,21 @@
                 <groupId>com.anthropic</groupId>
                 <artifactId>anthropic-java</artifactId>
                 <version>${anthropic.sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.anthropic</groupId>
+                <artifactId>anthropic-java-bedrock</artifactId>
+                <version>${anthropic.sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bedrock</artifactId>
+                <version>${aws.sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>url-connection-client</artifactId>
+                <version>${aws.sdk.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.temporal</groupId>

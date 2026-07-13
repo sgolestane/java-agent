@@ -30,6 +30,10 @@
         </dependency>
         <dependency>
             <groupId>dev.agentkit</groupId>
+            <artifactId>agentkit-llm-bedrock</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.agentkit</groupId>
             <artifactId>agentkit-temporal</artifactId>
         </dependency>
         <!-- The main() demos are meant to be run; give them a real logging binding. -->

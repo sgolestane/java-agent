@@ -1,6 +1,5 @@
 package dev.agentkit.examples;
 
-import dev.agentkit.anthropic.AnthropicLlmClient;
 import dev.agentkit.core.agent.AgentConfig;
 import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.llm.LlmClient;
@@ -33,7 +32,8 @@ public final class TemporalWorkerExample {
     }
 
     public static void main(String[] args) {
-        LlmClient llm = AnthropicLlmClient.fromEnv();
+        ExampleBackend backend = ExampleBackend.fromEnv();
+        LlmClient llm = backend.llm();
         ToolRegistry tools = new SimpleToolRegistry();
 
         // Client and worker must share the AgentKit data converter.
@@ -47,7 +47,7 @@ public final class TemporalWorkerExample {
         TemporalAgent.register(worker, llm, tools);
         factory.start();
 
-        AgentConfig config = AgentConfig.builder(AnthropicLlmClient.DEFAULT_MODEL)
+        AgentConfig config = AgentConfig.builder(backend.model())
                 .systemPrompt("You are a helpful assistant.")
                 .maxSteps(8)
                 .build();

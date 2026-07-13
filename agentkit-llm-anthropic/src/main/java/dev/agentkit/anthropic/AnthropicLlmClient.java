@@ -52,9 +52,22 @@ public final class AnthropicLlmClient implements LlmClient {
     };
 
     private final AnthropicClient client;
+    private final ModelResolver modelResolver;
 
     public AnthropicLlmClient(AnthropicClient client) {
+        this(client, ModelResolver.IDENTITY);
+    }
+
+    /**
+     * Builds a client that translates each request's logical model id through
+     * {@code modelResolver} before calling the API. Use this for backends where
+     * the wire model id differs from the logical one (e.g. Amazon Bedrock
+     * application inference profiles); the first-party API uses
+     * {@link ModelResolver#IDENTITY}.
+     */
+    public AnthropicLlmClient(AnthropicClient client, ModelResolver modelResolver) {
         this.client = Objects.requireNonNull(client, "client");
+        this.modelResolver = Objects.requireNonNull(modelResolver, "modelResolver");
     }
 
     /** Builds a client from the {@code ANTHROPIC_API_KEY} environment variable. */
@@ -66,7 +79,7 @@ public final class AnthropicLlmClient implements LlmClient {
     public LlmResponse generate(LlmRequest request) {
         Objects.requireNonNull(request, "request");
         try {
-            MessageCreateParams params = toParams(request);
+            MessageCreateParams params = toParams(request, modelResolver);
             com.anthropic.models.messages.Message response = client.messages().create(params);
             return toLlmResponse(response);
         } catch (LlmException e) {
@@ -79,8 +92,12 @@ public final class AnthropicLlmClient implements LlmClient {
     // --- request mapping ----------------------------------------------------
 
     static MessageCreateParams toParams(LlmRequest request) {
+        return toParams(request, ModelResolver.IDENTITY);
+    }
+
+    static MessageCreateParams toParams(LlmRequest request, ModelResolver modelResolver) {
         MessageCreateParams.Builder builder = MessageCreateParams.builder()
-                .model(request.model())
+                .model(modelResolver.resolve(request.model()))
                 .maxTokens(request.maxTokens());
         request.system().ifPresent(builder::system);
         for (Message message : request.messages()) {

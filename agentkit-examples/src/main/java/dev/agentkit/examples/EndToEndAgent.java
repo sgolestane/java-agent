@@ -1,6 +1,5 @@
 package dev.agentkit.examples;
 
-import dev.agentkit.anthropic.AnthropicLlmClient;
 import dev.agentkit.core.agent.Agent;
 import dev.agentkit.core.agent.AgentConfig;
 import dev.agentkit.core.agent.AgentObserver;
@@ -141,10 +140,10 @@ public final class EndToEndAgent {
                 .build();
     }
 
-    /** Runs the example against the real Anthropic API (reads {@code ANTHROPIC_API_KEY}). */
+    /** Runs the example against the configured backend (see {@link ExampleBackend}). */
     public static void main(String[] args) {
-        LlmClient llm = AnthropicLlmClient.fromEnv();
-        SelfVerifyingAgent agent = build(llm, AnthropicLlmClient.DEFAULT_MODEL);
+        ExampleBackend backend = ExampleBackend.fromEnv();
+        SelfVerifyingAgent agent = build(backend.llm(), backend.model());
         AgentResult result = agent.run(Goal.of(
                 "A customer asks whether they can return a final-sale item bought 10 days ago. Answer."));
         System.out.println("stopReason=" + result.stopReason());

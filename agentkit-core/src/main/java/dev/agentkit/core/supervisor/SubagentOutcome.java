@@ -8,14 +8,14 @@ import java.util.Objects;
  * The result of running one {@link DelegatedTask}: which subagent ran, the
  * subgoal it pursued, and the {@link AgentResult} it produced.
  *
- * @param subagent the name of the subagent that ran
- * @param goal     the subgoal it pursued
- * @param result   the outcome of the run; never {@code null}
+ * @param subagentName the name of the subagent that ran
+ * @param goal         the subgoal it pursued
+ * @param result       the outcome of the run; never {@code null}
  */
-public record SubagentOutcome(String subagent, Goal goal, AgentResult result) {
+public record SubagentOutcome(String subagentName, Goal goal, AgentResult result) {
 
     public SubagentOutcome {
-        Objects.requireNonNull(subagent, "subagent");
+        Objects.requireNonNull(subagentName, "subagentName");
         Objects.requireNonNull(goal, "goal");
         Objects.requireNonNull(result, "result");
     }

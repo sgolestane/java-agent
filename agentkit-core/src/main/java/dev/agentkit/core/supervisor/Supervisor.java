@@ -3,6 +3,7 @@ package dev.agentkit.core.supervisor;
 import dev.agentkit.core.agent.AgentResult;
 import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.llm.TokenUsage;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -10,6 +11,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +41,15 @@ import org.slf4j.LoggerFactory;
  * builds a fresh agent per delegation, parallel fan-out shares no per-run state.
  * A subagent that fails does not abort the others: its failure is captured in its
  * outcome and passed to the synthesizer, which decides how to present the gap.
+ *
+ * <p><strong>Reliability bounds (both opt-in).</strong> An optional
+ * {@link Builder#maxConcurrency(int)} caps how many subagents run at once, so a
+ * large decomposition does not fire unbounded simultaneous LLM calls at a
+ * rate-limited backend. An optional {@link Builder#timeout(Duration)} sets an
+ * overall deadline for the whole fan-out: a subagent still running when it
+ * elapses is cancelled and recorded as a failed (timed-out) outcome rather than
+ * stranding the others. On any exit — normal, timeout, or an unexpected error —
+ * still-running futures are cancelled before {@code fanOut} returns.
  */
 public final class Supervisor {
 
@@ -45,11 +58,15 @@ public final class Supervisor {
     private final SubagentRoster roster;
     private final Synthesizer synthesizer;
     private final ExecutorService executor; // nullable: null => a fresh per-call executor
+    private final int maxConcurrency;        // 0 => unbounded
+    private final Duration timeout;          // nullable => no deadline
 
     private Supervisor(Builder b) {
         this.roster = Objects.requireNonNull(b.roster, "roster");
         this.synthesizer = Objects.requireNonNull(b.synthesizer, "synthesizer");
         this.executor = b.executor;
+        this.maxConcurrency = b.maxConcurrency;
+        this.timeout = b.timeout;
     }
 
     public static Builder builder(SubagentRoster roster) {
@@ -90,8 +107,8 @@ public final class Supervisor {
 
     private void validateRouting(List<DelegatedTask> tasks) {
         for (DelegatedTask task : tasks) {
-            if (roster.find(task.subagent()).isEmpty()) {
-                throw new IllegalArgumentException("No subagent named '" + task.subagent()
+            if (roster.find(task.subagentName()).isEmpty()) {
+                throw new IllegalArgumentException("No subagent named '" + task.subagentName()
                         + "' in the roster " + roster.names());
             }
         }
@@ -107,33 +124,71 @@ public final class Supervisor {
     }
 
     private List<SubagentOutcome> runOn(ExecutorService exec, List<DelegatedTask> tasks) {
+        Semaphore gate = maxConcurrency > 0 ? new Semaphore(maxConcurrency) : null;
+        long deadlineNanos = timeout != null ? System.nanoTime() + timeout.toNanos() : 0L;
+
         List<Future<SubagentOutcome>> futures = new ArrayList<>(tasks.size());
         for (DelegatedTask task : tasks) {
-            futures.add(exec.submit(() -> runOne(task)));
+            futures.add(exec.submit(() -> runOne(task, gate)));
         }
-        List<SubagentOutcome> outcomes = new ArrayList<>(tasks.size());
-        for (Future<SubagentOutcome> future : futures) {
-            outcomes.add(await(future));
+        try {
+            List<SubagentOutcome> outcomes = new ArrayList<>(tasks.size());
+            for (int i = 0; i < tasks.size(); i++) {
+                outcomes.add(await(tasks.get(i), futures.get(i), deadlineNanos));
+            }
+            return outcomes;
+        } finally {
+            // Normal exit leaves nothing running; on timeout or an unexpected error
+            // this frees any subagent still in flight instead of leaking it.
+            for (Future<SubagentOutcome> future : futures) {
+                if (!future.isDone()) {
+                    future.cancel(true);
+                }
+            }
         }
-        return outcomes;
     }
 
-    private SubagentOutcome runOne(DelegatedTask task) {
-        Subagent subagent = roster.find(task.subagent()).orElseThrow();
-        AgentResult result;
-        try {
-            result = subagent.handle(task.goal());
-        } catch (RuntimeException e) {
-            // A subagent must never take the whole fan-out down; record and continue.
-            log.warn("Subagent '{}' threw during delegation", task.subagent(), e);
-            result = AgentResult.failed(e, 0);
+    private SubagentOutcome runOne(DelegatedTask task, Semaphore gate) {
+        if (gate != null) {
+            try {
+                gate.acquire();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return timedOut(task); // cancelled while waiting for a concurrency slot
+            }
         }
-        return new SubagentOutcome(task.subagent(), task.goal(), result);
+        try {
+            AgentResult result;
+            try {
+                result = roster.find(task.subagentName()).orElseThrow().handle(task.goal());
+            } catch (RuntimeException e) {
+                // A subagent must never take the whole fan-out down; record and continue.
+                log.warn("Subagent '{}' threw during delegation", task.subagentName(), e);
+                result = AgentResult.failed(e, 0);
+            }
+            return new SubagentOutcome(task.subagentName(), task.goal(), result);
+        } finally {
+            if (gate != null) {
+                gate.release();
+            }
+        }
     }
 
-    private static SubagentOutcome await(Future<SubagentOutcome> future) {
+    private SubagentOutcome await(DelegatedTask task, Future<SubagentOutcome> future, long deadlineNanos) {
         try {
-            return future.get();
+            if (timeout == null) {
+                return future.get();
+            }
+            long remaining = deadlineNanos - System.nanoTime();
+            if (remaining <= 0) {
+                future.cancel(true);
+                return timedOut(task);
+            }
+            return future.get(remaining, TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            log.warn("Subagent '{}' timed out after {}", task.subagentName(), timeout);
+            return timedOut(task);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while awaiting a subagent", e);
@@ -145,11 +200,18 @@ public final class Supervisor {
         }
     }
 
+    private static SubagentOutcome timedOut(DelegatedTask task) {
+        return new SubagentOutcome(task.subagentName(), task.goal(),
+                AgentResult.failed(new TimeoutException("Subagent timed out"), 0));
+    }
+
     /** Fluent construction; {@code synthesizer} defaults to concatenation. */
     public static final class Builder {
         private final SubagentRoster roster;
         private Synthesizer synthesizer = Synthesizers.concatenating();
         private ExecutorService executor;
+        private int maxConcurrency;
+        private Duration timeout;
 
         private Builder(SubagentRoster roster) {
             this.roster = roster;
@@ -168,6 +230,33 @@ public final class Supervisor {
          */
         public Builder executor(ExecutorService executor) {
             this.executor = Objects.requireNonNull(executor, "executor");
+            return this;
+        }
+
+        /**
+         * Caps how many subagents run concurrently (default unbounded). Applies
+         * regardless of the executor: excess subagents wait for a slot rather than
+         * issuing simultaneous LLM calls.
+         */
+        public Builder maxConcurrency(int maxConcurrency) {
+            if (maxConcurrency < 1) {
+                throw new IllegalArgumentException("maxConcurrency must be >= 1, was " + maxConcurrency);
+            }
+            this.maxConcurrency = maxConcurrency;
+            return this;
+        }
+
+        /**
+         * Sets an overall deadline for a {@code fanOut} (default none). A subagent
+         * still running when it elapses is cancelled and recorded as a failed,
+         * timed-out outcome; the rest are unaffected.
+         */
+        public Builder timeout(Duration timeout) {
+            Objects.requireNonNull(timeout, "timeout");
+            if (timeout.isZero() || timeout.isNegative()) {
+                throw new IllegalArgumentException("timeout must be positive, was " + timeout);
+            }
+            this.timeout = timeout;
             return this;
         }
 

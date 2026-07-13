@@ -69,6 +69,23 @@ class SubagentToolsTest {
     }
 
     @Test
+    void delegateReturnsErrorWhenSubagentFactoryThrows() {
+        Subagent broken = Subagent.of("broken", "throws on build",
+                () -> { throw new IllegalStateException("factory boom"); });
+        Tool tool = SubagentTools.delegateTool(SubagentRoster.of(broken));
+        ToolResult result = call(tool, Map.of("subagent", "broken", "goal", "x"));
+        assertThat(result.isError()).isTrue();
+        assertThat(result.content()).contains("broken").contains("failed");
+    }
+
+    @Test
+    void delegateToolNameConstantMatches() {
+        assertThat(SubagentTools.DELEGATE).isEqualTo("delegate");
+        Tool tool = SubagentTools.delegateTool(SubagentRoster.of(textSubagent("a", "x")));
+        assertThat(tool.name()).isEqualTo(SubagentTools.DELEGATE);
+    }
+
+    @Test
     void supervisorAgentDrivesDelegationThroughTheLoop() {
         // The supervisor model delegates to "specialist", then finishes with its output.
         SubagentRoster roster = SubagentRoster.of(textSubagent("specialist", "specialist answer"));

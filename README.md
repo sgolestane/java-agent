@@ -215,6 +215,11 @@ SupervisionResult result = supervisor.fanOut(Goal.of("Brief me on X"), List.of(
         DelegatedTask.of("writer", "Draft a one-paragraph brief")));
 ```
 
+Fan-out is bounded: `maxConcurrency(n)` caps simultaneous subagents (so a large
+decomposition doesn't flood a rate-limited backend) and `timeout(duration)` sets
+an overall deadline — a subagent still running when it elapses is cancelled and
+recorded as a failed outcome rather than stranding the rest.
+
 When the split depends on intermediate results, let a supervisor *model* decide
 instead: wire `SubagentTools.delegateTool(roster)` into an ordinary `Agent` and
 it calls `delegate(subagent, goal)` one subgoal at a time.

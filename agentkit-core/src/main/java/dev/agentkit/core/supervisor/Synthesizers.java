@@ -6,11 +6,15 @@ import dev.agentkit.core.llm.LlmRequest;
 import dev.agentkit.core.message.Message;
 import java.util.List;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Factories for common {@link Synthesizer}s.
  */
 public final class Synthesizers {
+
+    private static final Logger log = LoggerFactory.getLogger(Synthesizers.class);
 
     private Synthesizers() {
     }
@@ -27,7 +31,7 @@ public final class Synthesizers {
                 if (sb.length() > 0) {
                     sb.append("\n\n");
                 }
-                sb.append("## ").append(outcome.subagent());
+                sb.append("## ").append(outcome.subagentName());
                 if (!outcome.succeeded()) {
                     sb.append(" (").append(outcome.result().stopReason()).append(')');
                 }
@@ -68,6 +72,7 @@ public final class Synthesizers {
             try {
                 return llm.generate(request).message().text();
             } catch (RuntimeException e) {
+                log.warn("LLM synthesis failed; falling back to concatenation", e);
                 return fallback.synthesize(original, outcomes);
             }
         };
@@ -77,7 +82,7 @@ public final class Synthesizers {
         StringBuilder sb = new StringBuilder("ORIGINAL GOAL:\n").append(original.description());
         sb.append("\n\nSUBAGENT RESULTS:");
         for (SubagentOutcome outcome : outcomes) {
-            sb.append("\n\n[").append(outcome.subagent()).append(']');
+            sb.append("\n\n[").append(outcome.subagentName()).append(']');
             if (!outcome.succeeded()) {
                 sb.append(" (did not complete: ").append(outcome.result().stopReason()).append(')');
             }

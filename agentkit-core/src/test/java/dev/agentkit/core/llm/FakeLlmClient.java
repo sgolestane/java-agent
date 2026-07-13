@@ -13,6 +13,10 @@ import java.util.Map;
 /**
  * A scripted {@link LlmClient} for tests: returns pre-built responses in order
  * and records every request it receives.
+ *
+ * <p>Thread-safe: {@code generate} is synchronized so a single client may safely
+ * back a subagent that runs on multiple threads (e.g. the same subagent delegated
+ * twice in one parallel fan-out). Responses are still consumed in FIFO order.
  */
 public final class FakeLlmClient implements LlmClient {
 
@@ -26,7 +30,7 @@ public final class FakeLlmClient implements LlmClient {
     }
 
     @Override
-    public LlmResponse generate(LlmRequest request) {
+    public synchronized LlmResponse generate(LlmRequest request) {
         received.add(request);
         if (scripted.isEmpty()) {
             throw new LlmException("FakeLlmClient exhausted after " + received.size() + " calls");
@@ -34,7 +38,7 @@ public final class FakeLlmClient implements LlmClient {
         return scripted.poll();
     }
 
-    public List<LlmRequest> received() {
+    public synchronized List<LlmRequest> received() {
         return List.copyOf(received);
     }
 

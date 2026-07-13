@@ -22,6 +22,7 @@ public record SupervisionResult(String output, List<SubagentOutcome> outcomes,
 
     public SupervisionResult {
         Objects.requireNonNull(output, "output");
+        Objects.requireNonNull(outcomes, "outcomes");
         Objects.requireNonNull(totalUsage, "totalUsage");
         outcomes = List.copyOf(outcomes);
         if (totalSteps < 0) {

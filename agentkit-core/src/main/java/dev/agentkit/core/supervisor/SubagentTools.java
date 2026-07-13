@@ -27,6 +27,9 @@ import java.util.Objects;
  */
 public final class SubagentTools {
 
+    /** The name of the delegation tool produced by {@link #delegateTool}. */
+    public static final String DELEGATE = "delegate";
+
     private SubagentTools() {
     }
 
@@ -34,12 +37,18 @@ public final class SubagentTools {
      * A {@code delegate} tool that runs the named subagent on the given subgoal.
      * The tool description lists the available subagents so the model can route
      * without a separate catalog in the system prompt.
+     *
+     * <p>The description and the {@code subagent} enum are snapshotted from the
+     * roster at build time, while the handler resolves against the live roster.
+     * Build the tool <em>after</em> the roster is finalized; mutating the roster
+     * afterwards leaves the advertised schema stale relative to what the handler
+     * accepts.
      */
     public static Tool delegateTool(SubagentRoster roster) {
         Objects.requireNonNull(roster, "roster");
         String description = "Delegate a subgoal to a specialized subagent and return its result. "
                 + "Available subagents:\n" + roster.catalog();
-        return FunctionTool.builder("delegate", description)
+        return FunctionTool.builder(DELEGATE, description)
                 .schema(Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -65,7 +74,15 @@ public final class SubagentTools {
                         return ToolResult.error(
                                 "Unknown subagent '" + name + "'. Available: " + roster.names());
                     }
-                    AgentResult result = subagent.handle(Goal.of(goalText));
+                    AgentResult result;
+                    try {
+                        result = subagent.handle(Goal.of(goalText));
+                    } catch (RuntimeException e) {
+                        // A delegation must always come back as a tool result, never a
+                        // thrown exception — symmetric with Supervisor.fanOut.
+                        return ToolResult.error(
+                                "Subagent '" + name + "' failed: " + e.getMessage());
+                    }
                     if (result.isSuccess()) {
                         return ToolResult.ok(result.output());
                     }

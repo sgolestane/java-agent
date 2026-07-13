@@ -70,6 +70,8 @@ class AnthropicLlmClientTest {
     void modelResolverOfMapPassesUnmappedIdsThrough() {
         assertThat(ModelResolver.ofMap(Map.of("a", "b")).resolve("z")).isEqualTo("z");
         assertThat(ModelResolver.IDENTITY.resolve("claude-opus-4-8")).isEqualTo("claude-opus-4-8");
+        // An empty map is identity.
+        assertThat(ModelResolver.ofMap(Map.of()).resolve("anything")).isEqualTo("anything");
     }
 
     @Test

@@ -16,12 +16,15 @@ import software.amazon.awssdk.services.bedrock.model.InferenceProfileType;
  */
 class InferenceProfilesTest {
 
-    private static InferenceProfileSummary appProfile(String name, String arn, String underlyingModelArn) {
+    private static InferenceProfileSummary appProfile(String name, String arn, String... underlyingModelArns) {
+        List<InferenceProfileModel> models = java.util.Arrays.stream(underlyingModelArns)
+                .map(arnStr -> InferenceProfileModel.builder().modelArn(arnStr).build())
+                .toList();
         return InferenceProfileSummary.builder()
                 .inferenceProfileName(name)
                 .inferenceProfileArn(arn)
                 .type(InferenceProfileType.APPLICATION)
-                .models(List.of(InferenceProfileModel.builder().modelArn(underlyingModelArn).build()))
+                .models(models)
                 .build();
     }
 
@@ -33,9 +36,38 @@ class InferenceProfilesTest {
 
         Map<String, String> mapping = InferenceProfiles.mapFromSummaries(List.of(profile), s -> true);
 
-        // Both the exact cross-region id and its base id resolve to the ARN.
+        // Both the exact cross-region id and its base id resolve to the ARN — and only those.
+        assertThat(mapping).hasSize(2);
         assertThat(mapping).containsEntry("us.anthropic.claude-opus-4-8", arn);
         assertThat(mapping).containsEntry("anthropic.claude-opus-4-8", arn);
+    }
+
+    @Test
+    void skipsModelsWithNullArnButKeepsSiblings() {
+        String arn = "arn:aws:bedrock:us-east-1:123:application-inference-profile/opus";
+        InferenceProfileSummary profile = appProfile("prod-opus", arn,
+                null, // a model with no modelArn must not crash the build
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-8");
+
+        Map<String, String> mapping = InferenceProfiles.mapFromSummaries(List.of(profile), s -> true);
+
+        assertThat(mapping).containsEntry("anthropic.claude-opus-4-8", arn);
+        assertThat(mapping).hasSize(1); // only the valid model contributed
+    }
+
+    @Test
+    void handlesMultiModelAndEmptyModelSummaries() {
+        String arn = "arn:app/multi";
+        InferenceProfileSummary multi = appProfile("multi", arn,
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-8",
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-4-5");
+        InferenceProfileSummary empty = appProfile("empty", "arn:app/empty"); // no models
+
+        Map<String, String> mapping = InferenceProfiles.mapFromSummaries(List.of(multi, empty), s -> true);
+
+        assertThat(mapping).containsEntry("anthropic.claude-opus-4-8", arn);
+        assertThat(mapping).containsEntry("anthropic.claude-haiku-4-5", arn);
+        assertThat(mapping).hasSize(2); // the empty-models summary contributes nothing
     }
 
     @Test

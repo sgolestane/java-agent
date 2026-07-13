@@ -19,7 +19,6 @@
         <dependency>
             <groupId>dev.agentkit</groupId>
             <artifactId>agentkit-llm-anthropic</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <!-- Anthropic SDK's Bedrock (Mantle) backend for the Messages API data plane. -->
         <dependency>
@@ -31,10 +30,12 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>bedrock</artifactId>
         </dependency>
-        <!-- A lightweight HTTP client so the control-plane client works out of the box. -->
+        <!-- A lightweight HTTP client so the control-plane client works out of the box.
+             Selected via ServiceLoader at runtime, so no compile-time dependency. -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>url-connection-client</artifactId>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 </project>

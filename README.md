@@ -269,15 +269,16 @@ ARNs discovered at runtime. A `ModelResolver` maps the logical ids your agents u
 onto the concrete wire ids, so nothing else changes.
 
 ```java
-// Foundation / cross-region ids — set the model on AgentConfig directly:
+// No application profiles — invoke a cross-region inference-profile id directly.
+// (The bare "anthropic.claude-opus-4-8" is NOT on-demand invokable — use the geo form.)
 LlmClient llm = Bedrock.llmClient();            // AWS_REGION + default credential chain
-// AgentConfig.builder("anthropic.claude-opus-4-8")...
+// AgentConfig.builder(BedrockModels.US_CLAUDE_OPUS_4_8)...  // "us.anthropic.claude-opus-4-8"
 
 // Application inference profiles — discover ARNs and resolve logical ids to them:
 try (BedrockClient control = BedrockClient.create()) {
     ModelResolver resolver = InferenceProfiles.resolver(control);  // lists your app profiles
     LlmClient llm2 = Bedrock.llmClient(resolver);
-    // AgentConfig model stays "anthropic.claude-opus-4-8"; each call is rewritten to your ARN.
+    // AgentConfig model is the bare "anthropic.claude-opus-4-8"; each call is rewritten to your ARN.
 }
 ```
 

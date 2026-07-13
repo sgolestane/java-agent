@@ -21,11 +21,14 @@ import software.amazon.awssdk.regions.Region;
  * application inference profiles at runtime.
  *
  * <pre>{@code
- * // Cross-region / foundation-model ids — set the model on AgentConfig directly:
+ * // No application profiles — invoke a cross-region inference-profile id directly.
+ * // (The bare foundation-model id "anthropic.claude-opus-4-8" is NOT on-demand
+ * //  invokable; use the geo-prefixed form.)
  * LlmClient llm = Bedrock.llmClient();               // AWS_REGION + default cred chain
- * agent.run(...); // AgentConfig model = "anthropic.claude-opus-4-8"
+ * agent.run(...); // AgentConfig model = BedrockModels.US_CLAUDE_OPUS_4_8 ("us.anthropic.claude-opus-4-8")
  *
- * // Application inference profiles — discover ARNs and map logical ids to them:
+ * // Application inference profiles — discover ARNs and map logical ids to them.
+ * // Here the AgentConfig model is the bare foundation-model id (a resolver key):
  * try (BedrockClient control = BedrockClient.create()) {
  *     ModelResolver resolver = InferenceProfiles.resolver(control);
  *     LlmClient llm2 = Bedrock.llmClient(resolver);  // AgentConfig model = "anthropic.claude-opus-4-8"
@@ -54,12 +57,14 @@ public final class Bedrock {
 
     /** A Bedrock-backed {@code LlmClient} using the default region/credentials and {@code modelResolver}. */
     public static AnthropicLlmClient llmClient(ModelResolver modelResolver) {
+        Objects.requireNonNull(modelResolver, "modelResolver");
         return llmClient(BedrockMantleBackend.fromEnv(), modelResolver);
     }
 
     /** A Bedrock-backed {@code LlmClient} pinned to {@code region}, with {@code modelResolver}. */
     public static AnthropicLlmClient llmClient(Region region, ModelResolver modelResolver) {
         Objects.requireNonNull(region, "region");
+        Objects.requireNonNull(modelResolver, "modelResolver");
         return llmClient(BedrockMantleBackend.builder().region(region).build(), modelResolver);
     }
 

@@ -50,6 +50,13 @@ public final class InferenceProfiles {
      */
     public static ModelResolver resolver(BedrockClient client, Predicate<InferenceProfileSummary> filter) {
         Map<String, String> mapping = discover(client, filter);
+        if (mapping.isEmpty()) {
+            // Nothing to rewrite — likely no matching profiles or a too-narrow filter.
+            // The resolver will pass ids through, so an unmapped model id would only
+            // fail at invoke time; warn now so the cause is clear.
+            log.warn("No application inference profiles matched; model ids will pass through "
+                    + "unchanged. Check the region, the filter, and bedrock:ListInferenceProfiles access.");
+        }
         // Fallback to identity so ids without a profile (or non-Bedrock ids) pass through.
         return ModelResolver.ofMap(mapping);
     }

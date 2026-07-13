@@ -1,7 +1,6 @@
 package dev.agentkit.examples;
 
 import dev.agentkit.anthropic.AnthropicLlmClient;
-import dev.agentkit.anthropic.ModelResolver;
 import dev.agentkit.bedrock.Bedrock;
 import dev.agentkit.bedrock.BedrockModels;
 import dev.agentkit.bedrock.InferenceProfiles;
@@ -31,14 +30,18 @@ public record ExampleBackend(LlmClient llm, String model) {
     /** Chooses the backend from {@code AGENTKIT_BACKEND} (and related) env vars. */
     public static ExampleBackend fromEnv() {
         if ("bedrock".equalsIgnoreCase(System.getenv("AGENTKIT_BACKEND"))) {
-            ModelResolver resolver = ModelResolver.IDENTITY;
             if ("true".equalsIgnoreCase(System.getenv("AGENTKIT_BEDROCK_DISCOVER_PROFILES"))) {
                 // A one-off control-plane call maps logical ids → your profile ARNs.
+                // The AgentConfig model is the bare foundation-model id (a resolver key).
                 try (BedrockClient control = BedrockClient.create()) {
-                    resolver = InferenceProfiles.resolver(control);
+                    return new ExampleBackend(
+                            Bedrock.llmClient(InferenceProfiles.resolver(control)),
+                            BedrockModels.CLAUDE_OPUS_4_8);
                 }
             }
-            return new ExampleBackend(Bedrock.llmClient(resolver), BedrockModels.CLAUDE_OPUS_4_8);
+            // No profiles: invoke the cross-region inference-profile id directly
+            // (the bare foundation-model id is not on-demand invokable).
+            return new ExampleBackend(Bedrock.llmClient(), BedrockModels.US_CLAUDE_OPUS_4_8);
         }
         return new ExampleBackend(AnthropicLlmClient.fromEnv(), AnthropicLlmClient.DEFAULT_MODEL);
     }

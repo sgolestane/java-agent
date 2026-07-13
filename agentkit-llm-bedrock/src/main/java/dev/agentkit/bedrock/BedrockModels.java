@@ -7,21 +7,47 @@ import java.util.Set;
  *
  * <p>On Bedrock, Anthropic model ids carry an {@code anthropic.} vendor prefix
  * (e.g. {@code anthropic.claude-opus-4-8}), and cross-region inference profiles
- * add a geography prefix on top ({@code us.anthropic.claude-opus-4-8}). The
- * constants here are the foundation-model ids; {@link #baseModelId(String)}
- * strips a geography prefix so ids from different sources compare equal.
+ * add a geography prefix on top ({@code us.anthropic.claude-opus-4-8}).
+ *
+ * <p><strong>Which id to use.</strong> Current Claude models generally cannot be
+ * invoked on-demand by the bare foundation-model id — invocation requires a
+ * <em>cross-region</em> inference-profile id (the geo-prefixed {@code US_*}
+ * constants) or an application-inference-profile ARN (see
+ * {@link InferenceProfiles}). The bare foundation-model constants are what
+ * discovery keys resolve <em>from</em> — set one as your {@code AgentConfig}
+ * model and let a resolver map it to your ARN — not ids to invoke directly.
+ * {@link #baseModelId(String)} strips a geography prefix so ids from different
+ * sources compare equal.
  */
 public final class BedrockModels {
 
     /** Recognised cross-region inference-profile geography prefixes. */
     private static final Set<String> GEO_PREFIXES = Set.of("us", "eu", "apac", "us-gov");
 
+    // Foundation-model ids — the keys a resolver maps FROM (not on-demand invokable).
     public static final String CLAUDE_OPUS_4_8 = "anthropic.claude-opus-4-8";
     public static final String CLAUDE_OPUS_4_7 = "anthropic.claude-opus-4-7";
     public static final String CLAUDE_SONNET_4_6 = "anthropic.claude-sonnet-4-6";
     public static final String CLAUDE_HAIKU_4_5 = "anthropic.claude-haiku-4-5";
 
+    // US cross-region inference-profile ids — on-demand invokable without an
+    // application profile. Use the eu./apac. form (see crossRegion) in other geos.
+    public static final String US_CLAUDE_OPUS_4_8 = "us.anthropic.claude-opus-4-8";
+    public static final String US_CLAUDE_OPUS_4_7 = "us.anthropic.claude-opus-4-7";
+    public static final String US_CLAUDE_SONNET_4_6 = "us.anthropic.claude-sonnet-4-6";
+    public static final String US_CLAUDE_HAIKU_4_5 = "us.anthropic.claude-haiku-4-5";
+
     private BedrockModels() {
+    }
+
+    /**
+     * Builds a cross-region inference-profile id by prefixing a geography onto a
+     * foundation-model id, e.g. {@code crossRegion("eu", CLAUDE_OPUS_4_8)} →
+     * {@code eu.anthropic.claude-opus-4-8}. Any existing geography prefix on
+     * {@code modelId} is replaced.
+     */
+    public static String crossRegion(String geography, String modelId) {
+        return geography + "." + baseModelId(modelId);
     }
 
     /**

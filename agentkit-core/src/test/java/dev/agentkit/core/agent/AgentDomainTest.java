@@ -43,4 +43,31 @@ class AgentDomainTest {
         assertThatThrownBy(() -> AgentResult.completed("x", -1))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void stoppedRejectsErrorReason() {
+        assertThatThrownBy(() -> AgentResult.stopped(StopReason.ERROR, "", 1))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void errorReasonRequiresErrorPresent() {
+        assertThatThrownBy(() -> new AgentResult(StopReason.ERROR, "", 1, java.util.Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nonErrorReasonRejectsErrorPresent() {
+        assertThatThrownBy(() -> new AgentResult(
+                StopReason.MAX_STEPS, "", 1, java.util.Optional.of(new RuntimeException())))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void stoppedBuildsNonErrorResult() {
+        AgentResult r = AgentResult.stopped(StopReason.MAX_STEPS, "partial", 5);
+        assertThat(r.stopReason()).isEqualTo(StopReason.MAX_STEPS);
+        assertThat(r.isSuccess()).isFalse();
+        assertThat(r.error()).isEmpty();
+    }
 }

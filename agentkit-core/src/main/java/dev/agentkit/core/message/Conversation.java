@@ -1,9 +1,9 @@
 package dev.agentkit.core.message;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * An append-only, ordered sequence of {@link Message messages} representing the
@@ -31,9 +31,12 @@ public final class Conversation {
         return this;
     }
 
-    /** Returns an unmodifiable snapshot view of the messages. */
+    /**
+     * Returns an unmodifiable snapshot of the messages. The returned list is a
+     * copy: subsequent {@link #append(Message)} calls do not affect it.
+     */
     public List<Message> messages() {
-        return Collections.unmodifiableList(new ArrayList<>(messages));
+        return List.copyOf(messages);
     }
 
     public int size() {
@@ -45,9 +48,9 @@ public final class Conversation {
     }
 
     /** Returns the most recently appended message, or empty if none. */
-    public java.util.Optional<Message> last() {
+    public Optional<Message> last() {
         return messages.isEmpty()
-                ? java.util.Optional.empty()
-                : java.util.Optional.of(messages.get(messages.size() - 1));
+                ? Optional.empty()
+                : Optional.of(messages.get(messages.size() - 1));
     }
 }

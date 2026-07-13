@@ -61,7 +61,7 @@ Modules are introduced by the phase that first needs them.
 ## Build
 
 ```bash
-mvn test
+mvn verify
 ```
 
 ## License

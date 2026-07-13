@@ -54,6 +54,23 @@ class MessageTest {
     }
 
     @Test
+    void toolUseInputPermitsNullValues() {
+        var input = new java.util.HashMap<String, Object>();
+        input.put("optional", null);
+        ToolUseBlock block = new ToolUseBlock("id", "tool", input);
+
+        assertThat(block.input()).containsKey("optional");
+        assertThat(block.input().get("optional")).isNull();
+    }
+
+    @Test
+    void textIsEmptyForToolOnlyMessage() {
+        Message m = Message.of(Role.ASSISTANT,
+                new ToolUseBlock("t1", "search", Map.of("q", "x")));
+        assertThat(m.text()).isEmpty();
+    }
+
+    @Test
     void toolResultFactoriesSetErrorFlag() {
         assertThat(ToolResultBlock.ok("id", "done").isError()).isFalse();
         assertThat(ToolResultBlock.error("id", "boom").isError()).isTrue();

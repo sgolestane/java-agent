@@ -13,7 +13,9 @@ import java.util.Objects;
  * @param name  the name of the tool to invoke; never {@code null}
  * @param input the parsed tool arguments as a JSON-like map; never {@code null}.
  *              A defensive, order-preserving, unmodifiable copy is stored. Null
- *              values are permitted (JSON {@code null} arguments).
+ *              values are permitted (JSON {@code null} arguments). The copy is
+ *              <em>shallow</em>: nested mutable values are shared, so callers
+ *              should treat argument values as read-only.
  */
 public record ToolUseBlock(String id, String name, Map<String, Object> input) implements ContentBlock {
 

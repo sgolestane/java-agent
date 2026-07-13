@@ -51,8 +51,8 @@ search tool, and a Skills subsystem that mirrors the three-tier disclosure model
 "Context engineering" has replaced "prompt engineering" as the central skill for
 long-horizon agents: curating what enters the limited window at each step. LLM
 accuracy is known to drop as context length grows even when all needed
-information is present ("context rot", with reported 13.9–85% degradations), so
-active context management is required *before* the nominal window fills.
+information is present (commonly called "context rot"), so active context
+management is required *before* the nominal window fills.
 
 Two complementary in-session techniques:
 
@@ -65,7 +65,23 @@ Two complementary in-session techniques:
 → **Requirement:** a pluggable context builder with a token budgeter, a
 compaction strategy, and a context-editing strategy. (AgentKit Phase 6.)
 
-### 2.3 Memory
+### 2.3 Knowledge base and retrieval
+
+An unsupervised agent must ground its work in authoritative, application-owned
+information rather than only its parametric knowledge. The established pattern is
+retrieval-augmented generation exposed *as a tool*: the agent decides when to
+query a knowledge base and receives back the most relevant chunks. Two retrieval
+strategies dominate — lexical (BM25) for exact-term and code-like queries, and
+dense vector similarity for semantic matches — and production systems often
+combine them. The framework must supply the *mechanism* (ingestion, chunking,
+retrieval SPI, a search tool) while leaving the *data* and embedding provider to
+the application.
+
+→ **Requirement:** a `KnowledgeBase`/`Retriever` SPI with a document/chunk model,
+an in-memory BM25 implementation, an `EmbeddingStore` interface for vector
+search, and a `knowledge_search` tool. (AgentKit Phase 4.)
+
+### 2.4 Memory
 
 Compaction keeps a single session alive; **memory** persists knowledge *across*
 sessions. The established pattern is a file-backed memory tool: the agent
@@ -78,7 +94,7 @@ multi-session performance.
 store SPI with a file-backed reference implementation and a safe, path-validated
 memory tool. (AgentKit Phase 5.)
 
-### 2.4 Verification and reliability
+### 2.5 Verification and reliability
 
 Unsupervised agents must not trust their own first output. Effective patterns:
 
@@ -94,7 +110,7 @@ Unsupervised agents must not trust their own first output. Effective patterns:
 → **Requirement:** a `Verifier` SPI, guardrail/gating hooks on tool execution,
 schema validation, and retry policy. (AgentKit Phase 7.)
 
-### 2.5 Supervisor and subagents
+### 2.6 Supervisor and subagents
 
 Decoupling "the brain from the hands" and delegating independent subtasks to
 subagents improves both scale and reliability. A **coordinator** agent holds the
@@ -106,15 +122,16 @@ fan-out is wide.
 → **Requirement:** a supervisor that can spawn subagents from a roster, delegate
 goals, run them (sequentially or in parallel), and collect results. (Phase 8.)
 
-### 2.6 Durable execution with Temporal
+### 2.7 Durable execution with Temporal
 
 Agent runs are long, stateful, and failure-prone (model timeouts, tool errors,
 rate limits, process restarts). **Temporal** provides *durable execution*: the
 agentic loop is a **Workflow** whose state is persisted in history and replayed
 deterministically after any failure; each **model call and tool call is an
 Activity** with automatic retries. Signals/Queries/Updates provide the
-control-plane (inject input, read state, steer). This is a production pattern —
-OpenAI's Codex is cited as running its coding-task loop on Temporal.
+control-plane (inject input, read state, steer). This is a production pattern:
+Temporal and multiple vendors report running long-running agent loops on durable
+execution to survive process restarts and transient failures.
 
 → **Requirement:** a Temporal integration where the agent loop is a workflow and
 the non-deterministic steps (LLM inference, tool execution) are activities,
@@ -124,7 +141,7 @@ built cleanly on top of the provider-agnostic core. (AgentKit Phase 9.)
 
 | Concern | Choice | Rationale |
 | --- | --- | --- |
-| Language | Java 21 (LTS) | Latest LTS available in the toolchain; records, sealed types, pattern matching, virtual threads suit this domain. |
+| Language | Java 21 (LTS) | The LTS provided by the build toolchain; records, sealed types, pattern matching, and virtual threads suit this domain. Targets are advanced as newer LTS releases become available. |
 | Build | Maven multi-module | Clean separation of core / provider / durability / examples; each module independently reviewable. |
 | LLM provider | Anthropic Java SDK (`com.anthropic:anthropic-java`), model `claude-opus-4-8` | First-class tool use, thinking, structured outputs; kept behind an `LlmClient` SPI so the core stays provider-agnostic. |
 | Durable execution | Temporal Java SDK | Industry-standard durable execution for agent loops. |

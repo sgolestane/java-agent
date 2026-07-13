@@ -15,7 +15,8 @@ import java.util.Objects;
  * @param description human-readable statement of what to achieve; never
  *                    {@code null} or blank
  * @param parameters structured, application-supplied context; never
- *                   {@code null}. Stored as a defensive, unmodifiable copy.
+ *                   {@code null}. Stored as a defensive, unmodifiable copy. The
+ *                   copy is <em>shallow</em>: nested mutable values are shared.
  */
 public record Goal(String description, Map<String, Object> parameters) {
 

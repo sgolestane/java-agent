@@ -12,7 +12,7 @@ package dev.agentkit;
  */
 public final class AgentKit {
 
-    /** The released version of the framework. */
+    /** The current framework version. */
     public static final String VERSION = "0.1.0-SNAPSHOT";
 
     private AgentKit() {

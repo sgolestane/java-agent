@@ -8,7 +8,7 @@ SPIs established by earlier phases.
 ## Module layout (target)
 
 ```
-agentkit-parent/            # parent POM, dependency & plugin management
+./                          # parent POM (agentkit-parent): dependency & plugin management
 ├── agentkit-core/          # provider-agnostic core (no vendor SDKs)
 ├── agentkit-llm-anthropic/ # LlmClient adapter over the Anthropic Java SDK
 ├── agentkit-temporal/      # durable execution: agent loop as a Temporal workflow

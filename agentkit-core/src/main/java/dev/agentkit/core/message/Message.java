@@ -29,6 +29,11 @@ public record Message(Role role, List<ContentBlock> content) {
         return new Message(role, List.of(block));
     }
 
+    /** Creates a message from an ordered list of content blocks. */
+    public static Message of(Role role, List<ContentBlock> blocks) {
+        return new Message(role, blocks);
+    }
+
     /** Creates a user message containing a single text block. */
     public static Message user(String text) {
         return of(Role.USER, TextBlock.of(text));

@@ -53,6 +53,45 @@ agentkit-examples/      # runnable end-to-end demos
 
 Modules are introduced by the phase that first needs them.
 
+## Quick start
+
+Wire an agent from a model client, a tool registry, and a config. Tools can be
+progressively disclosed so the model only sees what it needs:
+
+```java
+// 1. A model client (Anthropic adapter, or any LlmClient / fake for tests).
+LlmClient llm = AnthropicLlmClient.fromEnv(); // reads ANTHROPIC_API_KEY
+
+// 2. Tools — a few always available, the long tail deferred behind search.
+DisclosingToolRegistry tools = DisclosingToolRegistry.builder()
+        .alwaysAvailable(FunctionTool.builder("finish", "Return the final answer")
+                .handler(inv -> ToolResult.ok(inv.stringArgument("answer")))
+                .schema(Map.of("type", "object",
+                        "properties", Map.of("answer", Map.of("type", "string")),
+                        "required", List.of("answer")))
+                .build())
+        .deferred(FunctionTool.builder("get_weather", "Get the weather for a city")
+                .handler(inv -> ToolResult.ok("Sunny in " + inv.stringArgument("city")))
+                .schema(Map.of("type", "object",
+                        "properties", Map.of("city", Map.of("type", "string")),
+                        "required", List.of("city")))
+                .build())
+        .build();
+
+// 3. Run the loop toward a goal.
+Agent agent = new Agent(llm, tools,
+        AgentConfig.builder(AnthropicLlmClient.DEFAULT_MODEL)
+                .systemPrompt("You are a helpful assistant.")
+                .maxSteps(10)
+                .build());
+
+AgentResult result = agent.run(Goal.of("What's the weather in Seattle?"));
+System.out.println(result.output());
+```
+
+The agent starts seeing only `finish` and a `search_tools` tool; when it searches
+for "weather" the `get_weather` tool is revealed and becomes callable.
+
 ## Requirements
 
 - Java 21+

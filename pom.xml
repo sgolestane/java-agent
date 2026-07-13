@@ -15,6 +15,7 @@
 
     <modules>
         <module>agentkit-core</module>
+        <module>agentkit-llm-anthropic</module>
     </modules>
 
     <properties>
@@ -29,6 +30,7 @@
         <min.java.version>21</min.java.version>
 
         <!-- Dependency versions -->
+        <anthropic.sdk.version>2.48.0</anthropic.sdk.version>
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.3</assertj.version>
         <mockito.version>5.15.2</mockito.version>
@@ -42,6 +44,16 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>dev.agentkit</groupId>
+                <artifactId>agentkit-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.anthropic</groupId>
+                <artifactId>anthropic-java</artifactId>
+                <version>${anthropic.sdk.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>

@@ -16,6 +16,7 @@
     <modules>
         <module>agentkit-core</module>
         <module>agentkit-llm-anthropic</module>
+        <module>agentkit-temporal</module>
     </modules>
 
     <properties>
@@ -31,6 +32,7 @@
 
         <!-- Dependency versions -->
         <anthropic.sdk.version>2.48.0</anthropic.sdk.version>
+        <temporal.sdk.version>1.27.0</temporal.sdk.version>
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.3</assertj.version>
         <mockito.version>5.15.2</mockito.version>
@@ -53,6 +55,16 @@
                 <groupId>com.anthropic</groupId>
                 <artifactId>anthropic-java</artifactId>
                 <version>${anthropic.sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.temporal</groupId>
+                <artifactId>temporal-sdk</artifactId>
+                <version>${temporal.sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.temporal</groupId>
+                <artifactId>temporal-testing</artifactId>
+                <version>${temporal.sdk.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.junit</groupId>

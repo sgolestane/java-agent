@@ -224,6 +224,34 @@ When the split depends on intermediate results, let a supervisor *model* decide
 instead: wire `SubagentTools.delegateTool(roster)` into an ordinary `Agent` and
 it calls `delegate(subagent, goal)` one subgoal at a time.
 
+### Durable execution (Temporal)
+
+Run the *same* loop durably: every model turn and tool call becomes a Temporal
+activity, so a run survives worker crashes and replays deterministically from
+history without re-executing completed steps. The `agentkit-core` loop never
+imports Temporal — durability is an integration in `agentkit-temporal`.
+
+```java
+// Share one data converter across the client and the worker.
+WorkflowClientOptions opts = WorkflowClientOptions.newBuilder()
+        .setDataConverter(TemporalAgent.dataConverter()).build();
+WorkflowClient client = WorkflowClient.newInstance(service, opts);
+
+// The worker's activities hold the real, side-effecting collaborators.
+Worker worker = WorkerFactory.newInstance(client).newWorker("agentkit");
+TemporalAgent.register(worker, llmClient, toolRegistry);
+factory.start();
+
+// Start a durable run. maxSteps bounds the loop; activity retries are durable.
+AgentRunResult result = TemporalAgent.newStub(client, "agentkit")
+        .run(DurableAgentRun.of(Goal.of("Reconcile Q3"), config, toolRegistry.advertisedSpecs()));
+```
+
+Model inference and tool execution run as activities with their own retry
+policies; the conversation, step counter, and control flow live in the workflow
+so Temporal replays them exactly. (Context compaction issues its own model call,
+so it belongs in an activity — deferred to a later iteration.)
+
 ## Requirements
 
 - Java 21+

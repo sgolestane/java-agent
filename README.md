@@ -315,8 +315,8 @@ and resolve AWS credentials/region through the standard chain — including a na
 application inference profiles (which implies InvokeModel):
 
 ```bash
-aws sso login --profile thira-eng-bedrock          # ensure a valid session
-export AWS_PROFILE=thira-eng-bedrock
+aws sso login --profile my-bedrock-profile         # ensure a valid session
+export AWS_PROFILE=my-bedrock-profile
 export AWS_REGION=us-west-2                         # the region your profiles live in
 export AGENTKIT_BACKEND=bedrock
 export AGENTKIT_BEDROCK_DISCOVER_PROFILES=true      # InvokeModel + map logical ids → your profile ARNs

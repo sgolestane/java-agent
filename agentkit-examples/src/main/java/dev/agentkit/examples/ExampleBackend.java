@@ -1,11 +1,14 @@
 package dev.agentkit.examples;
 
 import dev.agentkit.anthropic.AnthropicLlmClient;
+import dev.agentkit.anthropic.ModelResolver;
 import dev.agentkit.bedrock.Bedrock;
 import dev.agentkit.bedrock.BedrockModels;
 import dev.agentkit.bedrock.InferenceProfiles;
 import dev.agentkit.core.llm.LlmClient;
+import java.util.function.Predicate;
 import software.amazon.awssdk.services.bedrock.BedrockClient;
+import software.amazon.awssdk.services.bedrock.model.InferenceProfileSummary;
 
 /**
  * Selects the model backend for the example {@code main} methods from the
@@ -25,6 +28,10 @@ import software.amazon.awssdk.services.bedrock.BedrockClient;
  *   <li>{@code AGENTKIT_BEDROCK_DISCOVER_PROFILES=true} — implies InvokeModel and
  *       additionally discovers your <em>application inference profiles</em>,
  *       resolving the logical model id to your profile ARN at runtime.</li>
+ *   <li>{@code AGENTKIT_BEDROCK_PROFILE_PREFIX=<name-prefix>} — restrict discovery
+ *       to profiles whose name starts with this prefix. Essential in a shared
+ *       account where many profiles wrap the same model (e.g. one per engineer):
+ *       without it discovery collides them and may pick one you can't invoke.</li>
  *   <li>{@code AGENTKIT_BEDROCK_MODEL=<id-or-arn>} — invoke this exact model id or
  *       application-inference-profile ARN directly via InvokeModel (no discovery).
  *       An escape hatch when you already know your ARN, e.g.
@@ -59,10 +66,13 @@ public record ExampleBackend(LlmClient llm, String model) {
             if (discover) {
                 // A one-off control-plane call maps logical ids → your profile ARNs.
                 // The AgentConfig model is the bare foundation-model id (a resolver key).
+                // A name prefix narrows a shared account down to your own profiles.
+                String prefix = System.getenv("AGENTKIT_BEDROCK_PROFILE_PREFIX");
                 try (BedrockClient control = BedrockClient.create()) {
-                    return new ExampleBackend(
-                            Bedrock.invokeModel(InferenceProfiles.resolver(control)),
-                            BedrockModels.CLAUDE_OPUS_4_6);
+                    ModelResolver resolver = (prefix == null || prefix.isBlank())
+                            ? InferenceProfiles.resolver(control)
+                            : InferenceProfiles.resolver(control, byNamePrefix(prefix.strip()));
+                    return new ExampleBackend(Bedrock.invokeModel(resolver), BedrockModels.CLAUDE_OPUS_4_6);
                 }
             }
             // No discovery: invoke the cross-region inference-profile id directly
@@ -72,5 +82,11 @@ public record ExampleBackend(LlmClient llm, String model) {
 
         // Mantle (default): the bare foundation-model id, routed via the project.
         return new ExampleBackend(Bedrock.llmClient(), BedrockModels.CLAUDE_OPUS_4_6);
+    }
+
+    /** Keeps only profiles whose name begins with {@code prefix}. */
+    private static Predicate<InferenceProfileSummary> byNamePrefix(String prefix) {
+        return summary -> summary.inferenceProfileName() != null
+                && summary.inferenceProfileName().startsWith(prefix);
     }
 }

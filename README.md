@@ -263,21 +263,38 @@ at-least-once, a non-idempotent tool should set `toolMaxAttempts = 1`.
 ### Running on Amazon Bedrock
 
 The Anthropic adapter is backend-agnostic — `agentkit-llm-bedrock` runs the same
-loop against Claude on Bedrock. Model ids differ: Bedrock foundation ids carry an
-`anthropic.` prefix, and **application inference profiles** are account-specific
-ARNs discovered at runtime. A `ModelResolver` maps the logical ids your agents use
-onto the concrete wire ids, so nothing else changes.
+loop against Claude on Bedrock. Bedrock model ids carry an `anthropic.` prefix
+(see `BedrockModels`); a `ModelResolver` maps the logical ids your agents use onto
+the concrete wire ids, so nothing else in AgentKit changes.
+
+There are **two invocation backends**, and the one you pick decides whether
+application inference profiles apply:
+
+| | `Bedrock.llmClient()` — Mantle | `Bedrock.invokeModel()` — InvokeModel |
+|---|---|---|
+| AWS surface | `bedrock-mantle` | `bedrock-runtime:InvokeModel` |
+| IAM action | `bedrock-mantle:CreateInference` on a *project* | `bedrock:InvokeModel` on the model/profile |
+| Cost attribution | per Bedrock project | per **application inference profile** |
+| Inference profiles | not applicable | **this is where they apply** |
+
+If you use **application inference profiles** (account-specific ARNs for cost
+attribution), you need the InvokeModel backend — profiles have no effect on the
+Mantle path.
 
 ```java
-// No application profiles — invoke a cross-region inference-profile id directly.
-// (The bare "anthropic.claude-opus-4-8" is NOT on-demand invokable — use the geo form.)
+// Mantle (recommended for new integrations, no inference profiles):
 LlmClient llm = Bedrock.llmClient();            // AWS_REGION + default credential chain
+// AgentConfig.builder(BedrockModels.CLAUDE_OPUS_4_8)...     // "anthropic.claude-opus-4-8"
+
+// InvokeModel, no profiles — invoke a cross-region inference-profile id directly.
+// (The bare "anthropic.claude-opus-4-8" is NOT on-demand invokable — use the geo form.)
+LlmClient direct = Bedrock.invokeModel();
 // AgentConfig.builder(BedrockModels.US_CLAUDE_OPUS_4_8)...  // "us.anthropic.claude-opus-4-8"
 
-// Application inference profiles — discover ARNs and resolve logical ids to them:
+// InvokeModel + application inference profiles — discover ARNs, resolve logical ids to them:
 try (BedrockClient control = BedrockClient.create()) {
     ModelResolver resolver = InferenceProfiles.resolver(control);  // lists your app profiles
-    LlmClient llm2 = Bedrock.llmClient(resolver);
+    LlmClient llm2 = Bedrock.invokeModel(resolver);
     // AgentConfig model is the bare "anthropic.claude-opus-4-8"; each call is rewritten to your ARN.
 }
 ```
@@ -286,20 +303,28 @@ If you obtain ARNs another way (config, SSM, your own discovery), skip discovery
 and pass `ModelResolver.ofMap(yourMap)`.
 
 **Run a demo on Bedrock.** The example `main`s honour `AGENTKIT_BACKEND=bedrock`
-(and `AGENTKIT_BEDROCK_DISCOVER_PROFILES=true`) and resolve AWS credentials/region
-through the standard chain — including a named **SSO** profile:
+and resolve AWS credentials/region through the standard chain — including a named
+**SSO** profile. By default the demo uses the Mantle backend; set
+`AGENTKIT_BEDROCK_INVOKE_MODEL=true` for the InvokeModel backend, or
+`AGENTKIT_BEDROCK_DISCOVER_PROFILES=true` to additionally discover your
+application inference profiles (which implies InvokeModel):
 
 ```bash
 aws sso login --profile thira-eng-bedrock          # ensure a valid session
 export AWS_PROFILE=thira-eng-bedrock
 export AWS_REGION=us-east-1                         # your Bedrock region
 export AGENTKIT_BACKEND=bedrock
-export AGENTKIT_BEDROCK_DISCOVER_PROFILES=true      # map logical ids → your profile ARNs
+export AGENTKIT_BEDROCK_DISCOVER_PROFILES=true      # InvokeModel + map logical ids → your profile ARNs
 
 mvn install -DskipTests                            # once — publish the modules locally
 mvn -f agentkit-examples/pom.xml exec:exec \        # fork a JVM to run the demo main()
     -Dexec.mainClass=dev.agentkit.examples.EndToEndAgent
 ```
+
+The InvokeModel path needs `bedrock:InvokeModel` on the model (or on your
+application-inference-profile ARN), plus `bedrock:ListInferenceProfiles` when
+`AGENTKIT_BEDROCK_DISCOVER_PROFILES=true`. The Mantle default instead needs
+`bedrock-mantle:CreateInference` on the project.
 
 Two things matter in that command: run *inside* the module (`-f
 agentkit-examples/pom.xml`, or `cd agentkit-examples` first) so the goal doesn't

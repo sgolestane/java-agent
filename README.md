@@ -275,7 +275,7 @@ application inference profiles apply:
 | AWS surface | `bedrock-mantle` | `bedrock-runtime:InvokeModel` |
 | IAM action | `bedrock-mantle:CreateInference` on a *project* | `bedrock:InvokeModel` on the model/profile |
 | Cost attribution | per Bedrock project | per **application inference profile** |
-| Inference profiles | not applicable | **this is where they apply** |
+| Application inference profiles | not applicable | **this is where they apply** |
 
 If you use **application inference profiles** (account-specific ARNs for cost
 attribution), you need the InvokeModel backend — profiles have no effect on the

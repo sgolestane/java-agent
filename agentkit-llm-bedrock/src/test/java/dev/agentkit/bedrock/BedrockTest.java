@@ -2,6 +2,7 @@ package dev.agentkit.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.anthropic.bedrock.backends.BedrockBackend;
 import com.anthropic.bedrock.backends.BedrockMantleBackend;
 import dev.agentkit.anthropic.ModelResolver;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,13 @@ class BedrockTest {
     @Test
     void clientRejectsNullBackend() {
         assertThatThrownBy(() -> Bedrock.client((BedrockMantleBackend) null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("backend");
+    }
+
+    @Test
+    void invokeModelClientRejectsNullBackend() {
+        assertThatThrownBy(() -> Bedrock.client((BedrockBackend) null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("backend");
     }

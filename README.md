@@ -347,6 +347,26 @@ The `agentkit-examples` module bundles the AWS `sso`/`ssooidc` modules so an SSO
 profile resolves out of the box; a library that uses SSO must add those two AWS
 SDK artifacts itself. No `ANTHROPIC_API_KEY` is needed on the Bedrock path.
 
+### Web research (a search tool)
+
+`WebResearchAgent` gives an agent a single `web_search` tool and asks it a
+question worth grounding in current docs — *how to add a user to a group with the
+Microsoft Graph API*. The agent searches, then answers from the results and cites
+the URLs.
+
+`web_search` is a **client-executed** tool (`WebResearchTools.webSearchTool`) over
+a small `WebSearch` seam — so it works against any backend, **including Bedrock**,
+where Anthropic's server-side web-search tool isn't available. It runs with no
+setup using offline sample results; set `TAVILY_API_KEY` to search the live web
+via `TavilyWebSearch` (JDK HTTP client + Jackson, no vendor SDK). Swap in another
+provider by implementing `WebSearch`.
+
+```bash
+export TAVILY_API_KEY=tvly-...                     # optional — omit for offline sample results
+mvn -f agentkit-examples/pom.xml exec:exec \
+    -Dexec.mainClass=dev.agentkit.examples.WebResearchAgent
+```
+
 ## Requirements
 
 - Java 21+

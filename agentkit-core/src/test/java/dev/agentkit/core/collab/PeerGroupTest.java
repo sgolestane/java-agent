@@ -32,6 +32,26 @@ class PeerGroupTest {
     }
 
     @Test
+    void emptyGroupReportsEmptyAndAnEmptyCatalog() {
+        PeerGroup group = new PeerGroup();
+        assertThat(group.isEmpty()).isTrue();
+        assertThat(group.names()).isEmpty();
+        assertThat(group.catalog()).isEmpty();
+    }
+
+    @Test
+    void singleAgentConvenienceFormReusesTheInstance() {
+        // The (name, description, Agent) overload reuses one stateless agent across
+        // interactions, rather than building a fresh one per call.
+        Agent shared = agentReturning("shared reply");
+        Peer p = Peer.of("worker", "works", shared);
+
+        PeerGroup group = PeerGroup.of(p);
+        assertThat(group.find("worker")).containsSame(p);
+        assertThat(p.handle(Goal.of("go")).output()).isEqualTo("shared reply");
+    }
+
+    @Test
     void rejectsDuplicateNames() {
         assertThatThrownBy(() -> PeerGroup.of(peer("alice"), peer("alice")))
                 .isInstanceOf(IllegalArgumentException.class)

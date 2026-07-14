@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.agentkit.core.agent.Agent;
 import dev.agentkit.core.agent.AgentConfig;
 import dev.agentkit.core.llm.FakeLlmClient;
-import dev.agentkit.core.supervisor.Subagent;
-import dev.agentkit.core.supervisor.SubagentRoster;
 import dev.agentkit.core.tool.SimpleToolRegistry;
 import dev.agentkit.core.tool.Tool;
 import dev.agentkit.core.tool.ToolInvocation;
@@ -34,8 +32,8 @@ class MessagingToolsTest {
 
     @Test
     void runsThePeerAndReturnsItsReply() {
-        SubagentRoster peers = SubagentRoster.of(
-                Subagent.of("expert", "Answers questions", () -> agentReplying("the answer is 42")));
+        PeerGroup peers = PeerGroup.of(
+                Peer.of("expert", "Answers questions", () -> agentReplying("the answer is 42")));
         Tool tool = MessagingTools.sendMessageTool(peers, MessagingTools.budget(5));
 
         ToolResult result = send(tool, "expert", "what is the answer?");
@@ -46,8 +44,8 @@ class MessagingToolsTest {
 
     @Test
     void sharedBudgetCapsTotalMessages() {
-        SubagentRoster peers = SubagentRoster.of(
-                Subagent.of("expert", "Answers", () -> agentReplying("ok")));
+        PeerGroup peers = PeerGroup.of(
+                Peer.of("expert", "Answers", () -> agentReplying("ok")));
         AtomicInteger budget = MessagingTools.budget(1);
         Tool tool = MessagingTools.sendMessageTool(peers, budget);
 
@@ -61,8 +59,8 @@ class MessagingToolsTest {
 
     @Test
     void unknownPeerIsAnError() {
-        SubagentRoster peers = SubagentRoster.of(
-                Subagent.of("expert", "Answers", () -> agentReplying("ok")));
+        PeerGroup peers = PeerGroup.of(
+                Peer.of("expert", "Answers", () -> agentReplying("ok")));
         Tool tool = MessagingTools.sendMessageTool(peers, MessagingTools.budget(5));
 
         ToolResult result = send(tool, "nobody", "hi");
@@ -73,8 +71,8 @@ class MessagingToolsTest {
 
     @Test
     void missingArgumentsAreErrors() {
-        SubagentRoster peers = SubagentRoster.of(
-                Subagent.of("expert", "Answers", () -> agentReplying("ok")));
+        PeerGroup peers = PeerGroup.of(
+                Peer.of("expert", "Answers", () -> agentReplying("ok")));
         Tool tool = MessagingTools.sendMessageTool(peers, MessagingTools.budget(5));
 
         assertThat(tool.execute(new ToolInvocation("i", "send_message", Map.of("message", "hi"))).isError())
@@ -85,8 +83,8 @@ class MessagingToolsTest {
 
     @Test
     void aPeerThatDoesNotCompleteComesBackAsAnError() {
-        SubagentRoster peers = SubagentRoster.of(
-                Subagent.of("flaky", "Refuses", MessagingToolsTest::agentRefusing));
+        PeerGroup peers = PeerGroup.of(
+                Peer.of("flaky", "Refuses", MessagingToolsTest::agentRefusing));
         Tool tool = MessagingTools.sendMessageTool(peers, MessagingTools.budget(5));
 
         ToolResult result = send(tool, "flaky", "help");

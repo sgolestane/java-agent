@@ -7,13 +7,13 @@ import dev.agentkit.core.collab.Blackboard;
 import dev.agentkit.core.collab.BlackboardTools;
 import dev.agentkit.core.collab.Critics;
 import dev.agentkit.core.collab.MessagingTools;
+import dev.agentkit.core.collab.Peer;
+import dev.agentkit.core.collab.PeerGroup;
 import dev.agentkit.core.collab.RefineLoop;
 import dev.agentkit.core.collab.RefineResult;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.reliability.RetryPolicy;
 import dev.agentkit.core.reliability.RetryingLlmClient;
-import dev.agentkit.core.supervisor.Subagent;
-import dev.agentkit.core.supervisor.SubagentRoster;
 import dev.agentkit.core.tool.SimpleToolRegistry;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -41,8 +41,8 @@ public final class CollaborationExample {
     /** Wires the writer + researcher + editor collaboration over a shared {@code board}. */
     public static RefineLoop build(LlmClient llm, String model, Blackboard board) {
         // A peer the writer can message for facts.
-        SubagentRoster peers = SubagentRoster.of(
-                Subagent.of("researcher", "Answers factual questions with brief, concrete facts.",
+        PeerGroup peers = PeerGroup.of(
+                Peer.of("researcher", "Answers factual questions with brief, concrete facts.",
                         () -> new Agent(llm, new SimpleToolRegistry(),
                                 AgentConfig.builder(model).maxSteps(6)
                                         .systemPrompt("You answer factual questions concisely and concretely.")
@@ -64,7 +64,7 @@ public final class CollaborationExample {
         };
 
         // The critic: an editor peer that reviews each draft (agent-to-agent critique).
-        Subagent editor = Subagent.of("editor", "Reviews drafts for clarity and accuracy",
+        Peer editor = Peer.of("editor", "Reviews drafts for clarity and accuracy",
                 () -> new Agent(llm, new SimpleToolRegistry(),
                         AgentConfig.builder(model).maxSteps(4)
                                 .systemPrompt("You are a meticulous editor.").build()));

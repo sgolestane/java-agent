@@ -2,8 +2,6 @@ package dev.agentkit.core.collab;
 
 import dev.agentkit.core.agent.AgentResult;
 import dev.agentkit.core.agent.Goal;
-import dev.agentkit.core.supervisor.Subagent;
-import dev.agentkit.core.supervisor.SubagentRoster;
 import dev.agentkit.core.tool.FunctionTool;
 import dev.agentkit.core.tool.Tool;
 import dev.agentkit.core.tool.ToolResult;
@@ -20,8 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * peer may message a third peer while answering, forming a conversation rather
  * than a one-way dispatch.
  *
- * <p>The peers are a {@link SubagentRoster} (here read as a directory of
- * addressable agents, not subordinates). Because a reply can trigger further
+ * <p>The peers are a {@link PeerGroup}. Because a reply can trigger further
  * messages, a shared {@link #budget(int) message budget} bounds the total number
  * of messages across the whole group and guarantees termination: once it is
  * exhausted, {@code send_message} returns an error instead of running another
@@ -49,7 +46,7 @@ public final class MessagingTools {
      * {@code budget}. Peers list themselves in the tool description so the model
      * can address without a separate roster in the prompt.
      */
-    public static Tool sendMessageTool(SubagentRoster peers, AtomicInteger budget) {
+    public static Tool sendMessageTool(PeerGroup peers, AtomicInteger budget) {
         Objects.requireNonNull(peers, "peers");
         Objects.requireNonNull(budget, "budget");
         String description = "Send a message to another agent and get its reply. Use this to ask a "
@@ -75,7 +72,7 @@ public final class MessagingTools {
                     if (message == null || message.isBlank()) {
                         return ToolResult.error("Missing required argument 'message'.");
                     }
-                    Subagent peer = peers.find(to).orElse(null);
+                    Peer peer = peers.find(to).orElse(null);
                     if (peer == null) {
                         return ToolResult.error("Unknown agent '" + to + "'. Available: " + peers.names());
                     }

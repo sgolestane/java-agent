@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.collab.Blackboard;
 import dev.agentkit.core.collab.RefineLoop;
+import dev.agentkit.core.collab.RefineResult;
 import org.junit.jupiter.api.Test;
 
 /** Drives {@link CollaborationExample}'s refine loop against a scripted model. */
@@ -24,7 +25,7 @@ class CollaborationExampleTest {
 
         Blackboard board = new Blackboard();
         RefineLoop loop = CollaborationExample.build(llm, MODEL, board);
-        RefineLoop.RefineResult result = loop.run(Goal.of("Brief on durable execution."));
+        RefineResult result = loop.run(Goal.of("Brief on durable execution."));
 
         assertThat(result.approved()).isTrue();
         assertThat(result.rounds()).isEqualTo(1);

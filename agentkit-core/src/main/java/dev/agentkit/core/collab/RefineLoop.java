@@ -26,17 +26,6 @@ public final class RefineLoop {
 
     private static final Logger log = LoggerFactory.getLogger(RefineLoop.class);
 
-    /**
-     * The outcome of a refine loop.
-     *
-     * @param output       the final draft
-     * @param approved     whether the critic approved that draft
-     * @param rounds       how many generator rounds ran (at least 1)
-     * @param lastFeedback the most recent critic feedback (empty if approved)
-     */
-    public record RefineResult(String output, boolean approved, int rounds, String lastFeedback) {
-    }
-
     private final Supplier<Agent> generatorFactory;
     private final Critic critic;
     private final int maxRounds;

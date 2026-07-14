@@ -2,11 +2,13 @@ package dev.agentkit.core.collab;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
 
 class BlackboardTest {
@@ -74,6 +76,25 @@ class BlackboardTest {
 
         assertThat(board.size()).isEqualTo(threads * perThread);
         assertThat(ids).hasSize(threads * perThread); // no duplicate ids handed out
+
+        // The list order never diverges from id order, even under concurrent posts:
+        // id assignment and insertion are atomic, so entries() is a contiguous,
+        // id-sorted prefix. (Guards the reserve-id-then-append race.)
+        List<Long> ordered = board.entries().stream().map(Blackboard.Entry::id).toList();
+        assertThat(ordered).isSorted();
+        assertThat(ordered).containsExactlyElementsOf(
+                LongStream.rangeClosed(1, threads * perThread).boxed().toList());
+
+        // A reader paging forward by max-seen id recovers every entry, no gaps.
+        List<Long> paged = new ArrayList<>();
+        long cursor = 0;
+        for (List<Blackboard.Entry> batch = board.since(cursor); !batch.isEmpty();
+                batch = board.since(cursor)) {
+            batch.forEach(e -> paged.add(e.id()));
+            cursor = batch.get(batch.size() - 1).id();
+        }
+        assertThat(paged).containsExactlyElementsOf(
+                LongStream.rangeClosed(1, threads * perThread).boxed().toList());
     }
 
     private static void await(CountDownLatch latch) {

@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A concurrency-safe shared workspace ("blackboard") that collaborating agents
@@ -35,16 +34,25 @@ public final class Blackboard {
     }
 
     private final List<Entry> entries = new CopyOnWriteArrayList<>();
-    private final AtomicLong nextId = new AtomicLong(1);
+    private final Object writeLock = new Object();
+    private long nextId = 1;
 
-    /** Appends a note and returns the stored entry (with its assigned id). */
+    /**
+     * Appends a note and returns the stored entry (with its assigned id). Id
+     * assignment and insertion happen together under a lock, so ids are handed out
+     * in insertion order — the list stays sorted by id and a concurrent post can
+     * never publish a lower id after a reader has paged past it. Reads are lock-free
+     * (the backing list is copy-on-write) and always see a contiguous id prefix.
+     */
     public Entry post(String author, String topic, String content) {
         Objects.requireNonNull(author, "author");
         Objects.requireNonNull(topic, "topic");
         Objects.requireNonNull(content, "content");
-        Entry entry = new Entry(nextId.getAndIncrement(), author, topic, content);
-        entries.add(entry);
-        return entry;
+        synchronized (writeLock) {
+            Entry entry = new Entry(nextId++, author, topic, content);
+            entries.add(entry);
+            return entry;
+        }
     }
 
     /** A snapshot of every entry, in post order. */

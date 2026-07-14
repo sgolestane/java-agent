@@ -8,6 +8,7 @@ import dev.agentkit.core.collab.BlackboardTools;
 import dev.agentkit.core.collab.Critics;
 import dev.agentkit.core.collab.MessagingTools;
 import dev.agentkit.core.collab.RefineLoop;
+import dev.agentkit.core.collab.RefineResult;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.reliability.RetryPolicy;
 import dev.agentkit.core.reliability.RetryingLlmClient;
@@ -78,7 +79,7 @@ public final class CollaborationExample {
 
         Blackboard board = new Blackboard();
         RefineLoop loop = build(reliable, backend.model(), board);
-        RefineLoop.RefineResult result = loop.run(Goal.of(
+        RefineResult result = loop.run(Goal.of(
                 "Write a three-sentence brief on the benefits of durable execution for AI agents."));
 
         System.out.println("approved=" + result.approved() + " rounds=" + result.rounds());

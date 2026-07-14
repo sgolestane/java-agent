@@ -43,6 +43,22 @@ class InferenceProfilesTest {
     }
 
     @Test
+    void versionSuffixedModelResolvesViaCleanLogicalId() {
+        // Mirrors a real application inference profile whose underlying foundation
+        // model carries a "-v1:0" version suffix.
+        String arn = "arn:aws:bedrock:us-west-2:123:application-inference-profile/85kwasneck7g";
+        InferenceProfileSummary profile = appProfile("eng-opus", arn,
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6-v1:0");
+
+        Map<String, String> mapping = InferenceProfiles.mapFromSummaries(List.of(profile), s -> true);
+
+        // The clean constant an agent is configured with resolves to the ARN...
+        assertThat(mapping).containsEntry(BedrockModels.CLAUDE_OPUS_4_6, arn);
+        // ...as does the exact version-suffixed id.
+        assertThat(mapping).containsEntry("anthropic.claude-opus-4-6-v1:0", arn);
+    }
+
+    @Test
     void skipsModelsWithNullArnButKeepsSiblings() {
         String arn = "arn:aws:bedrock:us-east-1:123:application-inference-profile/opus";
         InferenceProfileSummary profile = appProfile("prod-opus", arn,
@@ -93,6 +109,25 @@ class InferenceProfilesTest {
                 List.of(dev, prod), s -> s.inferenceProfileName().startsWith("prod"));
 
         assertThat(mapping).containsEntry("anthropic.claude-opus-4-8", "arn:prod");
+    }
+
+    @Test
+    void collisionOnlyOnTheLogicalKeyStillKeepsExactKeysDistinct() {
+        // Two profiles wrap different versions of the same model. Their exact and
+        // base keys differ, but both normalize to the same logical id — so only the
+        // logical key collides. First wins there; the exact keys stay separate.
+        InferenceProfileSummary v1 = appProfile("opus-v1", "arn:v1",
+                "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-4-6-v1:0");
+        InferenceProfileSummary v2 = appProfile("opus-v2", "arn:v2",
+                "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-4-6-v2:0");
+
+        Map<String, String> mapping = InferenceProfiles.mapFromSummaries(List.of(v1, v2), s -> true);
+
+        // The clean constant collides on the logical key — first (v1) wins.
+        assertThat(mapping).containsEntry(BedrockModels.CLAUDE_OPUS_4_6, "arn:v1");
+        // ...but each exact version id still resolves to its own profile.
+        assertThat(mapping).containsEntry("anthropic.claude-opus-4-6-v1:0", "arn:v1");
+        assertThat(mapping).containsEntry("anthropic.claude-opus-4-6-v2:0", "arn:v2");
     }
 
     @Test

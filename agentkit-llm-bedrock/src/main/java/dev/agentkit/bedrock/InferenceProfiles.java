@@ -22,9 +22,12 @@ import software.amazon.awssdk.services.bedrock.model.ListInferenceProfilesReques
  * system profile) with your own ARN, used for cost tracking and tagging. Because
  * the ARN is account-specific, it can't be a compile-time constant — this helper
  * lists your profiles via the Bedrock control-plane API and keys each one by the
- * underlying model id (both the exact id and its geography-stripped
- * {@linkplain BedrockModels#baseModelId(String) base}), so an agent configured
- * with {@code anthropic.claude-opus-4-8} resolves to the matching profile ARN.
+ * underlying model id — the exact id, its geography-stripped
+ * {@linkplain BedrockModels#baseModelId(String) base}, and its
+ * {@linkplain BedrockModels#logicalModelId(String) version-normalized logical id}
+ * — so an agent configured with a clean {@code anthropic.claude-opus-4-6} resolves
+ * to a profile even when its underlying model reports
+ * {@code anthropic.claude-opus-4-6-v1:0}.
  *
  * <p>Discovery is a one-off control-plane call; wrap the resulting resolver in
  * your application's lifecycle and reuse it. If you obtain ARNs another way
@@ -77,9 +80,13 @@ public final class InferenceProfiles {
 
     /**
      * Builds a {@code modelId → profileArn} map from already-fetched profile
-     * summaries. Each summary contributes its underlying model id and that id's
-     * {@linkplain BedrockModels#baseModelId(String) base} as keys. On a key
-     * collision the first profile wins and the conflict is logged, so a
+     * summaries. Each summary contributes its underlying model id, that id's
+     * {@linkplain BedrockModels#baseModelId(String) base}, and its
+     * {@linkplain BedrockModels#logicalModelId(String) version-normalized logical
+     * id} as keys — so an agent configured with a clean constant (e.g.
+     * {@code anthropic.claude-opus-4-6}) resolves to a profile whose underlying
+     * model reports a version-suffixed id ({@code anthropic.claude-opus-4-6-v1:0}).
+     * On a key collision the first profile wins and the conflict is logged, so a
      * {@code filter} should narrow ambiguous rosters ahead of this.
      */
     public static Map<String, String> mapFromSummaries(
@@ -99,6 +106,7 @@ public final class InferenceProfiles {
                 String modelId = BedrockModels.modelIdFromArn(model.modelArn());
                 putUnique(mapping, modelId, arn, summary);
                 putUnique(mapping, BedrockModels.baseModelId(modelId), arn, summary);
+                putUnique(mapping, BedrockModels.logicalModelId(modelId), arn, summary);
             }
         }
         return Map.copyOf(mapping);

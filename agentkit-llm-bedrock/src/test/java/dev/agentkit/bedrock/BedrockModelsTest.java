@@ -63,4 +63,29 @@ class BedrockModelsTest {
         assertThat(BedrockModels.modelIdFromArn("arn:...:foundation-model/")).isEqualTo("");
         assertThat(BedrockModels.modelIdFromArn("")).isEqualTo("");
     }
+
+    @Test
+    void logicalModelIdStripsVersionDateAndGeography() {
+        // Version suffix.
+        assertThat(BedrockModels.logicalModelId("anthropic.claude-opus-4-6-v1:0"))
+                .isEqualTo("anthropic.claude-opus-4-6");
+        // Snapshot date + version + geography prefix, all stripped.
+        assertThat(BedrockModels.logicalModelId("us.anthropic.claude-haiku-4-5-20251001-v1:0"))
+                .isEqualTo("anthropic.claude-haiku-4-5");
+        // A ":0" minor with no "-vN".
+        assertThat(BedrockModels.logicalModelId("anthropic.claude-opus-4-6:0"))
+                .isEqualTo("anthropic.claude-opus-4-6");
+        // A snapshot date with no version — exercises the date strip in isolation.
+        assertThat(BedrockModels.logicalModelId("anthropic.claude-opus-4-6-20251001"))
+                .isEqualTo("anthropic.claude-opus-4-6");
+    }
+
+    @Test
+    void logicalModelIdLeavesCleanIdsUnchanged() {
+        assertThat(BedrockModels.logicalModelId(BedrockModels.CLAUDE_OPUS_4_6))
+                .isEqualTo("anthropic.claude-opus-4-6");
+        // The "-4-6" tail is not an 8-digit date, so nothing is stripped.
+        assertThat(BedrockModels.logicalModelId("anthropic.claude-sonnet-4-6"))
+                .isEqualTo("anthropic.claude-sonnet-4-6");
+    }
 }

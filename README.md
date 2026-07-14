@@ -302,6 +302,11 @@ try (BedrockClient control = BedrockClient.create()) {
 If you obtain ARNs another way (config, SSM, your own discovery), skip discovery
 and pass `ModelResolver.ofMap(yourMap)`.
 
+In a **shared account** many application profiles can wrap the same model (e.g.
+one per engineer). Discovery keys by model id, so those collide and it keeps the
+first — which may not be one you can invoke. Pass a filter to narrow the roster
+to yours: `InferenceProfiles.resolver(control, s -> s.inferenceProfileName() != null && s.inferenceProfileName().startsWith("eng-me-"))`.
+
 **Run a demo on Bedrock.** The example `main`s honour `AGENTKIT_BACKEND=bedrock`
 and resolve AWS credentials/region through the standard chain — including a named
 **SSO** profile. By default the demo uses the Mantle backend; set
@@ -312,14 +317,18 @@ application inference profiles (which implies InvokeModel):
 ```bash
 aws sso login --profile thira-eng-bedrock          # ensure a valid session
 export AWS_PROFILE=thira-eng-bedrock
-export AWS_REGION=us-east-1                         # your Bedrock region
+export AWS_REGION=us-west-2                         # the region your profiles live in
 export AGENTKIT_BACKEND=bedrock
 export AGENTKIT_BEDROCK_DISCOVER_PROFILES=true      # InvokeModel + map logical ids → your profile ARNs
+export AGENTKIT_BEDROCK_PROFILE_PREFIX=eng-me-      # in a shared account, keep only your profiles
 
 mvn install -DskipTests                            # once — publish the modules locally
 mvn -f agentkit-examples/pom.xml exec:exec \        # fork a JVM to run the demo main()
     -Dexec.mainClass=dev.agentkit.examples.EndToEndAgent
 ```
+
+If you already know your profile ARN, skip discovery entirely and invoke it
+directly: `export AGENTKIT_BEDROCK_MODEL=arn:aws:bedrock:us-west-2:123:application-inference-profile/abc`.
 
 The InvokeModel path needs `bedrock:InvokeModel` on the model (or on your
 application-inference-profile ARN), plus `bedrock:ListInferenceProfiles` when

@@ -25,8 +25,6 @@ public final class SupervisorExample {
 
     /** A supervisor over a researcher + writer roster, synthesising with the model. */
     public static Supervisor build(LlmClient llm, String model) {
-        AgentConfig config = AgentConfig.builder(model).maxSteps(8).build();
-
         SubagentRoster roster = SubagentRoster.of(
                 Subagent.of("researcher", "Gathers and summarises the key facts on a topic",
                         () -> new Agent(llm, new SimpleToolRegistry(),

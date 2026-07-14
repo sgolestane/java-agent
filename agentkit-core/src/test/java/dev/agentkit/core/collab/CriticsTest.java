@@ -6,7 +6,6 @@ import dev.agentkit.core.agent.Agent;
 import dev.agentkit.core.agent.AgentConfig;
 import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.llm.FakeLlmClient;
-import dev.agentkit.core.supervisor.Subagent;
 import dev.agentkit.core.tool.SimpleToolRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -55,7 +54,7 @@ class CriticsTest {
     @Test
     void agentCriticRunsAPeerAndParsesItsVerdict() {
         Critic critic = Critics.agent(
-                Subagent.of("reviewer", "Reviews drafts", () -> agentReturning("APPROVE")));
+                Peer.of("reviewer", "Reviews drafts", () -> agentReturning("APPROVE")));
         assertThat(critic.review(GOAL, "draft").approved()).isTrue();
     }
 
@@ -63,7 +62,7 @@ class CriticsTest {
     void agentCriticThatDoesNotCompleteRequestsRevision() {
         Agent refusing = new Agent(new FakeLlmClient(FakeLlmClient.refusal("no")),
                 new SimpleToolRegistry(), AgentConfig.builder("m").maxSteps(3).build());
-        Critic critic = Critics.agent(Subagent.of("reviewer", "Reviews", () -> refusing));
+        Critic critic = Critics.agent(Peer.of("reviewer", "Reviews", () -> refusing));
 
         Critique c = critic.review(GOAL, "draft");
         assertThat(c.approved()).isFalse();

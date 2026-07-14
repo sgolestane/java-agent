@@ -5,7 +5,6 @@ import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmRequest;
 import dev.agentkit.core.message.Message;
-import dev.agentkit.core.supervisor.Subagent;
 import java.util.Objects;
 
 /**
@@ -56,7 +55,7 @@ public final class Critics {
      * genuine agent-to-agent critique. The reviewer is run once per draft; a
      * reviewer run that fails is treated as a revise request carrying the reason.
      */
-    public static Critic agent(Subagent reviewer) {
+    public static Critic agent(Peer reviewer) {
         Objects.requireNonNull(reviewer, "reviewer");
         return (goal, draft) -> {
             AgentResult result = reviewer.handle(Goal.of(SYSTEM + "\n\n" + reviewPrompt(goal, draft)));

@@ -75,4 +75,29 @@ public final class BedrockModels {
         int slash = arn.lastIndexOf('/');
         return slash >= 0 ? arn.substring(slash + 1) : arn;
     }
+
+    /**
+     * Reduces a Bedrock model id to the stable logical id AgentKit uses as a
+     * resolver key, dropping the parts that differ between the id you configure and
+     * the id a profile reports: a cross-region geography prefix, a snapshot date
+     * ({@code -YYYYMMDD}), a version ({@code -vN}), and a minor-version suffix
+     * ({@code :M}).
+     *
+     * <p>So {@code us.anthropic.claude-opus-4-6-v1:0} and
+     * {@code anthropic.claude-haiku-4-5-20251001-v1:0} both reduce to the bare
+     * {@code anthropic.claude-<model>} form — letting an agent configured with a
+     * clean constant such as {@link #CLAUDE_OPUS_4_6} resolve to a profile whose
+     * underlying model carries the {@code -v1:0} suffix. A value with none of
+     * those parts is returned unchanged (bar any geography prefix).
+     */
+    public static String logicalModelId(String modelId) {
+        String id = baseModelId(modelId);
+        int colon = id.indexOf(':');
+        if (colon >= 0) {
+            id = id.substring(0, colon);
+        }
+        id = id.replaceFirst("-v\\d+$", "");   // drop a "-v1" version
+        id = id.replaceFirst("-\\d{8}$", "");  // drop a "-20251001" snapshot date
+        return id;
+    }
 }

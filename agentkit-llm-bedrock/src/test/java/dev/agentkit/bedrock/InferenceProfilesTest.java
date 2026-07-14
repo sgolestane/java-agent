@@ -43,6 +43,22 @@ class InferenceProfilesTest {
     }
 
     @Test
+    void versionSuffixedModelResolvesViaCleanLogicalId() {
+        // Mirrors a real application inference profile whose underlying foundation
+        // model carries a "-v1:0" version suffix.
+        String arn = "arn:aws:bedrock:us-west-2:123:application-inference-profile/85kwasneck7g";
+        InferenceProfileSummary profile = appProfile("eng-opus", arn,
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6-v1:0");
+
+        Map<String, String> mapping = InferenceProfiles.mapFromSummaries(List.of(profile), s -> true);
+
+        // The clean constant an agent is configured with resolves to the ARN...
+        assertThat(mapping).containsEntry(BedrockModels.CLAUDE_OPUS_4_6, arn);
+        // ...as does the exact version-suffixed id.
+        assertThat(mapping).containsEntry("anthropic.claude-opus-4-6-v1:0", arn);
+    }
+
+    @Test
     void skipsModelsWithNullArnButKeepsSiblings() {
         String arn = "arn:aws:bedrock:us-east-1:123:application-inference-profile/opus";
         InferenceProfileSummary profile = appProfile("prod-opus", arn,

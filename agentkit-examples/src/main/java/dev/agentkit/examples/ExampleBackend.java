@@ -25,6 +25,10 @@ import software.amazon.awssdk.services.bedrock.BedrockClient;
  *   <li>{@code AGENTKIT_BEDROCK_DISCOVER_PROFILES=true} — implies InvokeModel and
  *       additionally discovers your <em>application inference profiles</em>,
  *       resolving the logical model id to your profile ARN at runtime.</li>
+ *   <li>{@code AGENTKIT_BEDROCK_MODEL=<id-or-arn>} — invoke this exact model id or
+ *       application-inference-profile ARN directly via InvokeModel (no discovery).
+ *       An escape hatch when you already know your ARN, e.g.
+ *       {@code arn:aws:bedrock:us-west-2:123:application-inference-profile/abc}.</li>
  * </ul>
  *
  * @param llm   the model client
@@ -36,6 +40,13 @@ public record ExampleBackend(LlmClient llm, String model) {
     public static ExampleBackend fromEnv() {
         if (!"bedrock".equalsIgnoreCase(System.getenv("AGENTKIT_BACKEND"))) {
             return new ExampleBackend(AnthropicLlmClient.fromEnv(), AnthropicLlmClient.DEFAULT_MODEL);
+        }
+
+        // Escape hatch: an explicit id or profile ARN is invoked directly via
+        // InvokeModel (IDENTITY resolver passes it through, no discovery).
+        String explicitModel = System.getenv("AGENTKIT_BEDROCK_MODEL");
+        if (explicitModel != null && !explicitModel.isBlank()) {
+            return new ExampleBackend(Bedrock.invokeModel(), explicitModel.strip());
         }
 
         // Application inference profiles only exist on the InvokeModel path, so

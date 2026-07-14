@@ -372,6 +372,34 @@ mvn -f agentkit-examples/pom.xml exec:exec \
     -Dexec.mainClass=dev.agentkit.examples.WebResearchAgent
 ```
 
+### Agent collaboration
+
+Beyond the top-down supervisor/subagent delegation (`Supervisor.fanOut` and the
+`delegate` tool), the `dev.agentkit.core.collab` package lets agents work *with*
+each other as peers, in three composable ways:
+
+- **Shared workspace** — a concurrency-safe `Blackboard` several agents post to
+  and read from (`BlackboardTools.postNoteTool` / `readBoardTool`), so they build
+  on each other's partial work instead of each starting fresh. Each agent's
+  `post_note` tool binds its author, so posts are reliably attributed.
+- **Agent-to-agent messaging** — `MessagingTools.sendMessageTool` gives any agent
+  a `send_message(to, message)` tool: it runs a named peer to completion and
+  returns the reply, so peers hold a real request/response conversation (not just
+  one-way dispatch). A shared message `budget(N)` bounds the whole exchange and
+  guarantees termination.
+- **Generator↔critic refine loop** — `RefineLoop` has one agent draft, a peer
+  `Critic` review, and the generator revise against the feedback until the critic
+  approves or a round cap is hit. The critic can be a single model call
+  (`Critics.llm`) or a whole peer agent (`Critics.agent`).
+
+`CollaborationExample` wires all three: a writer messages a `researcher` peer for
+facts, jots them to the shared board, and is refined by an `editor` critic.
+
+```bash
+mvn -f agentkit-examples/pom.xml exec:exec \
+    -Dexec.mainClass=dev.agentkit.examples.CollaborationExample
+```
+
 ## Requirements
 
 - Java 21+

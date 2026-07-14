@@ -27,6 +27,7 @@ public final class BedrockModels {
     // Foundation-model ids — the keys a resolver maps FROM (not on-demand invokable).
     public static final String CLAUDE_OPUS_4_8 = "anthropic.claude-opus-4-8";
     public static final String CLAUDE_OPUS_4_7 = "anthropic.claude-opus-4-7";
+    public static final String CLAUDE_OPUS_4_6 = "anthropic.claude-opus-4-6";
     public static final String CLAUDE_SONNET_4_6 = "anthropic.claude-sonnet-4-6";
     public static final String CLAUDE_HAIKU_4_5 = "anthropic.claude-haiku-4-5";
 
@@ -34,6 +35,7 @@ public final class BedrockModels {
     // application profile. Use the eu./apac. form (see crossRegion) in other geos.
     public static final String US_CLAUDE_OPUS_4_8 = "us.anthropic.claude-opus-4-8";
     public static final String US_CLAUDE_OPUS_4_7 = "us.anthropic.claude-opus-4-7";
+    public static final String US_CLAUDE_OPUS_4_6 = "us.anthropic.claude-opus-4-6";
     public static final String US_CLAUDE_SONNET_4_6 = "us.anthropic.claude-sonnet-4-6";
     public static final String US_CLAUDE_HAIKU_4_5 = "us.anthropic.claude-haiku-4-5";
 

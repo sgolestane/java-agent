@@ -16,12 +16,12 @@ import software.amazon.awssdk.services.bedrock.BedrockClient;
  *   <li>Default — the first-party API ({@code ANTHROPIC_API_KEY}), model
  *       {@code claude-opus-4-8}.</li>
  *   <li>{@code AGENTKIT_BACKEND=bedrock} — the <b>Mantle</b> backend (standard AWS
- *       credential chain, {@code AWS_REGION}), model {@code anthropic.claude-opus-4-8}
+ *       credential chain, {@code AWS_REGION}), model {@code anthropic.claude-opus-4-6}
  *       routed via a Bedrock project. Invocation needs
  *       {@code bedrock-mantle:CreateInference}.</li>
  *   <li>{@code AGENTKIT_BEDROCK_INVOKE_MODEL=true} — the classic <b>InvokeModel</b>
  *       backend ({@code bedrock:InvokeModel}) instead, model
- *       {@code us.anthropic.claude-opus-4-8} (a cross-region inference profile).</li>
+ *       {@code us.anthropic.claude-opus-4-6} (a cross-region inference profile).</li>
  *   <li>{@code AGENTKIT_BEDROCK_DISCOVER_PROFILES=true} — implies InvokeModel and
  *       additionally discovers your <em>application inference profiles</em>,
  *       resolving the logical model id to your profile ARN at runtime.</li>
@@ -51,15 +51,15 @@ public record ExampleBackend(LlmClient llm, String model) {
                 try (BedrockClient control = BedrockClient.create()) {
                     return new ExampleBackend(
                             Bedrock.invokeModel(InferenceProfiles.resolver(control)),
-                            BedrockModels.CLAUDE_OPUS_4_8);
+                            BedrockModels.CLAUDE_OPUS_4_6);
                 }
             }
             // No discovery: invoke the cross-region inference-profile id directly
             // (the bare foundation-model id is not on-demand invokable via InvokeModel).
-            return new ExampleBackend(Bedrock.invokeModel(), BedrockModels.US_CLAUDE_OPUS_4_8);
+            return new ExampleBackend(Bedrock.invokeModel(), BedrockModels.US_CLAUDE_OPUS_4_6);
         }
 
         // Mantle (default): the bare foundation-model id, routed via the project.
-        return new ExampleBackend(Bedrock.llmClient(), BedrockModels.CLAUDE_OPUS_4_8);
+        return new ExampleBackend(Bedrock.llmClient(), BedrockModels.CLAUDE_OPUS_4_6);
     }
 }

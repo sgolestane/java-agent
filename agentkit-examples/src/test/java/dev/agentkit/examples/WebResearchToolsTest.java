@@ -33,6 +33,27 @@ class WebResearchToolsTest {
     }
 
     @Test
+    void numbersMultipleResultsInOrderUnderAHeader() {
+        WebSearch search = (query, max) -> List.of(
+                new WebSearch.Result("First", "https://a.example", "aaa"),
+                new WebSearch.Result("Second", "https://b.example", "bbb"),
+                new WebSearch.Result("Third", "https://c.example", "ccc"));
+
+        ToolResult result = run(search, Map.of("query", "graph"));
+
+        assertThat(result.content())
+                .startsWith("Search results for: graph")
+                .contains("1. First")
+                .contains("2. Second")
+                .contains("3. Third");
+        // Numbering is in order: "1. First" precedes "2. Second" precedes "3. Third".
+        assertThat(result.content().indexOf("1. First"))
+                .isLessThan(result.content().indexOf("2. Second"));
+        assertThat(result.content().indexOf("2. Second"))
+                .isLessThan(result.content().indexOf("3. Third"));
+    }
+
+    @Test
     void clampsMaxResultsAndPassesTheQueryThrough() {
         int[] seenMax = {-1};
         String[] seenQuery = {null};
@@ -43,9 +64,28 @@ class WebResearchToolsTest {
         };
 
         run(search, Map.of("query", "  spaced  ", "max_results", 99));
-
         assertThat(seenQuery[0]).isEqualTo("spaced");   // stripped
-        assertThat(seenMax[0]).isEqualTo(10);           // clamped to the 1..10 range
+        assertThat(seenMax[0]).isEqualTo(10);           // clamped to the 1..10 upper bound
+
+        run(search, Map.of("query", "q", "max_results", 0));
+        assertThat(seenMax[0]).isEqualTo(1);            // clamped to the lower bound
+
+        run(search, Map.of("query", "q"));
+        assertThat(seenMax[0]).isEqualTo(5);            // default when absent
+    }
+
+    @Test
+    void blankButNonNullQueryIsAnError() {
+        int[] calls = {0};
+        WebSearch search = (query, max) -> {
+            calls[0]++;
+            return List.of();
+        };
+
+        ToolResult result = run(search, Map.of("query", "   "));
+
+        assertThat(result.isError()).isTrue();
+        assertThat(calls[0]).isZero(); // rejected before hitting the backend
     }
 
     @Test

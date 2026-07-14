@@ -356,13 +356,18 @@ the URLs.
 
 `web_search` is a **client-executed** tool (`WebResearchTools.webSearchTool`) over
 a small `WebSearch` seam — so it works against any backend, **including Bedrock**,
-where Anthropic's server-side web-search tool isn't available. It runs with no
-setup using offline sample results; set `TAVILY_API_KEY` to search the live web
-via `TavilyWebSearch` (JDK HTTP client + Jackson, no vendor SDK). Swap in another
-provider by implementing `WebSearch`.
+where Anthropic's server-side web-search tool isn't available. The *search tool* needs no
+setup — it returns offline sample results by default; set `TAVILY_API_KEY` to
+search the live web via `TavilyWebSearch` (JDK HTTP client + Jackson, no vendor
+SDK). Swap in another provider by implementing `WebSearch`. The *model* still
+comes from `ExampleBackend`, so set `ANTHROPIC_API_KEY` (or the Bedrock vars
+above) as for any other demo.
 
 ```bash
-export TAVILY_API_KEY=tvly-...                     # optional — omit for offline sample results
+export ANTHROPIC_API_KEY=sk-ant-...                # model backend (or the Bedrock vars above)
+export TAVILY_API_KEY=tvly-...                     # optional — omit for offline sample search results
+
+mvn install -DskipTests                            # once — publish the modules locally
 mvn -f agentkit-examples/pom.xml exec:exec \
     -Dexec.mainClass=dev.agentkit.examples.WebResearchAgent
 ```

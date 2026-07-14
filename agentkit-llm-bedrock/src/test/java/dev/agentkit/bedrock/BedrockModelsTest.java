@@ -75,6 +75,9 @@ class BedrockModelsTest {
         // A ":0" minor with no "-vN".
         assertThat(BedrockModels.logicalModelId("anthropic.claude-opus-4-6:0"))
                 .isEqualTo("anthropic.claude-opus-4-6");
+        // A snapshot date with no version — exercises the date strip in isolation.
+        assertThat(BedrockModels.logicalModelId("anthropic.claude-opus-4-6-20251001"))
+                .isEqualTo("anthropic.claude-opus-4-6");
     }
 
     @Test

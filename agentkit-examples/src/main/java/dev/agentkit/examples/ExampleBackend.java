@@ -29,14 +29,21 @@ import software.amazon.awssdk.services.bedrock.model.InferenceProfileSummary;
  *       additionally discovers your <em>application inference profiles</em>,
  *       resolving the logical model id to your profile ARN at runtime.</li>
  *   <li>{@code AGENTKIT_BEDROCK_PROFILE_PREFIX=<name-prefix>} — restrict discovery
- *       to profiles whose name starts with this prefix. Essential in a shared
- *       account where many profiles wrap the same model (e.g. one per engineer):
- *       without it discovery collides them and may pick one you can't invoke.</li>
+ *       to profiles whose name starts with this prefix. Only takes effect with
+ *       discovery enabled. Essential in a shared account where many profiles wrap
+ *       the same model (e.g. one per engineer): without it discovery collides them
+ *       and may pick one you can't invoke.</li>
  *   <li>{@code AGENTKIT_BEDROCK_MODEL=<id-or-arn>} — invoke this exact model id or
  *       application-inference-profile ARN directly via InvokeModel (no discovery).
  *       An escape hatch when you already know your ARN, e.g.
  *       {@code arn:aws:bedrock:us-west-2:123:application-inference-profile/abc}.</li>
  * </ul>
+ *
+ * <p>On the Bedrock path the vars are evaluated in this order — the first that
+ * applies wins: {@code AGENTKIT_BEDROCK_MODEL} (takes precedence over everything
+ * below), then {@code AGENTKIT_BEDROCK_DISCOVER_PROFILES}
+ * ({@code AGENTKIT_BEDROCK_PROFILE_PREFIX} narrows it), then
+ * {@code AGENTKIT_BEDROCK_INVOKE_MODEL}, else the Mantle default.
  *
  * @param llm   the model client
  * @param model the model id to put on {@code AgentConfig} for this backend

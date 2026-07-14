@@ -305,7 +305,7 @@ and pass `ModelResolver.ofMap(yourMap)`.
 In a **shared account** many application profiles can wrap the same model (e.g.
 one per engineer). Discovery keys by model id, so those collide and it keeps the
 first — which may not be one you can invoke. Pass a filter to narrow the roster
-to yours: `InferenceProfiles.resolver(control, s -> s.inferenceProfileName().startsWith("eng-me-"))`.
+to yours: `InferenceProfiles.resolver(control, s -> s.inferenceProfileName() != null && s.inferenceProfileName().startsWith("eng-me-"))`.
 
 **Run a demo on Bedrock.** The example `main`s honour `AGENTKIT_BACKEND=bedrock`
 and resolve AWS credentials/region through the standard chain — including a named

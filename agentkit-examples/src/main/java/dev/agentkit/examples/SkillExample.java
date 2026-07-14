@@ -2,6 +2,7 @@ package dev.agentkit.examples;
 
 import dev.agentkit.core.agent.Agent;
 import dev.agentkit.core.agent.AgentConfig;
+import dev.agentkit.core.agent.AgentObserver;
 import dev.agentkit.core.agent.AgentResult;
 import dev.agentkit.core.agent.Goal;
 import dev.agentkit.core.llm.LlmClient;
@@ -49,6 +50,11 @@ public final class SkillExample {
 
     /** An agent whose system prompt carries the skill catalog and whose registry holds the skill tools. */
     public static Agent build(LlmClient llm, String model) {
+        return build(llm, model, AgentObserver.NONE);
+    }
+
+    /** As {@link #build(LlmClient, String)}, with an observer on the agent (for tests/telemetry). */
+    static Agent build(LlmClient llm, String model, AgentObserver observer) {
         SkillLibrary library = library();
 
         // Both halves from one library: tools registered + catalog in the prompt.
@@ -63,7 +69,7 @@ public final class SkillExample {
                 .maxSteps(6)
                 .build();
 
-        return new Agent(llm, tools, config);
+        return Agent.builder(llm, tools, config).observer(observer).build();
     }
 
     /** Runs the example against the configured backend (see {@link ExampleBackend}). */

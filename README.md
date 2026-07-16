@@ -195,6 +195,25 @@ Not every check needs a model. `Verifiers` supplies deterministic checks —
 `Verifiers.allOf(...)` composes a cheap structural check ahead of the LLM critic
 so a run is gated on both, short-circuiting before spending a call.
 
+### Prompt caching
+
+An agent loop re-sends the same large prefix — tool definitions and the system
+prompt — on every turn. Pass a `CachePolicy` to `AnthropicLlmClient` to mark that
+prefix (and the growing conversation) with `cache_control` breakpoints, so each
+turn re-reads the cached span at ~0.1× input cost instead of paying full price to
+resend it:
+
+```java
+LlmClient llm = AnthropicLlmClient.fromEnv(CachePolicy.EPHEMERAL_5M);
+// or: new AnthropicLlmClient(client, resolver, CachePolicy.EPHEMERAL_5M);  // e.g. on Bedrock
+```
+
+It places at most two breakpoints (the tools+system prefix, and a rolling
+conversation breakpoint), is a pure cost/latency optimization with no effect on
+output, and silently no-ops below the model's minimum cacheable size. `EPHEMERAL_1H`
+trades a higher write premium for a longer TTL. Verify hits via
+`usage.cache_read_input_tokens`. Works on the first-party API and Bedrock.
+
 ### Supervisor & subagents
 
 Decompose a goal across specialised subagents and synthesize their results. Each

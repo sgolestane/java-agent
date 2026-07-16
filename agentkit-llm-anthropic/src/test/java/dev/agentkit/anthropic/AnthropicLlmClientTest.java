@@ -2,6 +2,7 @@ package dev.agentkit.anthropic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.StopReason;
 import dev.agentkit.core.llm.LlmRequest;
@@ -88,6 +89,68 @@ class AnthropicLlmClientTest {
         ModelResolver normalise = m -> m.replace("us.", "");
         ModelResolver mapped = ModelResolver.ofMap(Map.of("anthropic.claude-opus-4-8", "arn:profile"));
         assertThat(normalise.andThen(mapped).resolve("us.anthropic.claude-opus-4-8")).isEqualTo("arn:profile");
+    }
+
+    private static LlmRequest requestWithSystemToolAndMessage() {
+        return LlmRequest.builder("claude-opus-4-8")
+                .system("be helpful")
+                .addMessage(Message.user("hello"))
+                .tools(List.of(new ToolSpec("search", "search the web",
+                        Map.of("type", "object", "properties", Map.of("q", Map.of("type", "string")),
+                                "required", List.of("q")))))
+                .build();
+    }
+
+    @Test
+    void noCachingLeavesSystemAsAStringWithNoBreakpoints() {
+        MessageCreateParams params = AnthropicLlmClient.toParams(
+                requestWithSystemToolAndMessage(), ModelResolver.IDENTITY, CachePolicy.NONE);
+
+        assertThat(params.system().orElseThrow().isString()).isTrue();
+        assertThat(params.cacheControl()).isEmpty();
+        assertThat(params.tools().orElseThrow().get(0).tool().orElseThrow().cacheControl()).isEmpty();
+    }
+
+    @Test
+    void cachingMarksTheSystemPrefixAndTheRollingConversation() {
+        MessageCreateParams params = AnthropicLlmClient.toParams(
+                requestWithSystemToolAndMessage(), ModelResolver.IDENTITY, CachePolicy.EPHEMERAL_5M);
+
+        // The system prompt renders as a cache-marked text block (caches tools+system).
+        assertThat(params.system().orElseThrow().isTextBlockParams()).isTrue();
+        assertThat(params.system().orElseThrow().asTextBlockParams().get(0)
+                .cacheControl().orElseThrow().ttl()).contains(CacheControlEphemeral.Ttl.TTL_5M);
+        // The top-level breakpoint caches the growing conversation.
+        assertThat(params.cacheControl()).isPresent();
+        // The tool needs no breakpoint of its own — the system breakpoint covers it.
+        assertThat(params.tools().orElseThrow().get(0).tool().orElseThrow().cacheControl()).isEmpty();
+    }
+
+    @Test
+    void cachingWithoutASystemPromptMarksTheLastTool() {
+        LlmRequest request = LlmRequest.builder("claude-opus-4-8")
+                .addMessage(Message.user("hi"))
+                .tools(List.of(
+                        new ToolSpec("a", "tool a", Map.of("type", "object")),
+                        new ToolSpec("b", "tool b", Map.of("type", "object"))))
+                .build();
+
+        MessageCreateParams params = AnthropicLlmClient.toParams(
+                request, ModelResolver.IDENTITY, CachePolicy.EPHEMERAL_5M);
+
+        assertThat(params.system()).isEmpty();
+        assertThat(params.tools().orElseThrow().get(0).tool().orElseThrow().cacheControl()).isEmpty();
+        assertThat(params.tools().orElseThrow().get(1).tool().orElseThrow().cacheControl()).isPresent();
+        assertThat(params.cacheControl()).isPresent(); // rolling conversation breakpoint
+    }
+
+    @Test
+    void oneHourPolicyUsesTheOneHourTtl() {
+        MessageCreateParams params = AnthropicLlmClient.toParams(
+                requestWithSystemToolAndMessage(), ModelResolver.IDENTITY, CachePolicy.EPHEMERAL_1H);
+
+        assertThat(params.system().orElseThrow().asTextBlockParams().get(0)
+                .cacheControl().orElseThrow().ttl()).contains(CacheControlEphemeral.Ttl.TTL_1H);
     }
 
     @Test

@@ -3,6 +3,7 @@ package dev.agentkit.anthropic;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
@@ -53,9 +54,10 @@ public final class AnthropicLlmClient implements LlmClient {
 
     private final AnthropicClient client;
     private final ModelResolver modelResolver;
+    private final CachePolicy cachePolicy;
 
     public AnthropicLlmClient(AnthropicClient client) {
-        this(client, ModelResolver.IDENTITY);
+        this(client, ModelResolver.IDENTITY, CachePolicy.NONE);
     }
 
     /**
@@ -66,20 +68,36 @@ public final class AnthropicLlmClient implements LlmClient {
      * {@link ModelResolver#IDENTITY}.
      */
     public AnthropicLlmClient(AnthropicClient client, ModelResolver modelResolver) {
-        this.client = Objects.requireNonNull(client, "client");
-        this.modelResolver = Objects.requireNonNull(modelResolver, "modelResolver");
+        this(client, modelResolver, CachePolicy.NONE);
     }
 
-    /** Builds a client from the {@code ANTHROPIC_API_KEY} environment variable. */
+    /**
+     * As {@link #AnthropicLlmClient(AnthropicClient, ModelResolver)}, plus a
+     * {@link CachePolicy} that adds prompt-cache breakpoints to each request.
+     * Enabling caching is recommended for agent loops, which re-send a large stable
+     * prefix every turn.
+     */
+    public AnthropicLlmClient(AnthropicClient client, ModelResolver modelResolver, CachePolicy cachePolicy) {
+        this.client = Objects.requireNonNull(client, "client");
+        this.modelResolver = Objects.requireNonNull(modelResolver, "modelResolver");
+        this.cachePolicy = Objects.requireNonNull(cachePolicy, "cachePolicy");
+    }
+
+    /** Builds a client from the {@code ANTHROPIC_API_KEY} environment variable (no caching). */
     public static AnthropicLlmClient fromEnv() {
-        return new AnthropicLlmClient(AnthropicOkHttpClient.fromEnv());
+        return fromEnv(CachePolicy.NONE);
+    }
+
+    /** As {@link #fromEnv()}, with the given prompt-caching {@code cachePolicy}. */
+    public static AnthropicLlmClient fromEnv(CachePolicy cachePolicy) {
+        return new AnthropicLlmClient(AnthropicOkHttpClient.fromEnv(), ModelResolver.IDENTITY, cachePolicy);
     }
 
     @Override
     public LlmResponse generate(LlmRequest request) {
         Objects.requireNonNull(request, "request");
         try {
-            MessageCreateParams params = toParams(request, modelResolver);
+            MessageCreateParams params = toParams(request, modelResolver, cachePolicy);
             com.anthropic.models.messages.Message response = client.messages().create(params);
             return toLlmResponse(response);
         } catch (LlmException e) {
@@ -92,20 +110,64 @@ public final class AnthropicLlmClient implements LlmClient {
     // --- request mapping ----------------------------------------------------
 
     static MessageCreateParams toParams(LlmRequest request) {
-        return toParams(request, ModelResolver.IDENTITY);
+        return toParams(request, ModelResolver.IDENTITY, CachePolicy.NONE);
     }
 
     static MessageCreateParams toParams(LlmRequest request, ModelResolver modelResolver) {
+        return toParams(request, modelResolver, CachePolicy.NONE);
+    }
+
+    /**
+     * Maps the request, optionally adding prompt-cache breakpoints. The render
+     * order is tools &rarr; system &rarr; messages, and a breakpoint caches
+     * everything up to and including it, so the placement is:
+     * <ul>
+     *   <li>the <b>stable prefix</b> (tools + system) is cached by marking the
+     *       system prompt (which renders after the tools); with no system prompt,
+     *       the last tool is marked instead, so the tool definitions still cache;</li>
+     *   <li>the <b>growing conversation</b> is cached by a top-level breakpoint,
+     *       which the API auto-places on the last message block — so each turn's
+     *       history is a cache read on the next turn.</li>
+     * </ul>
+     * That is at most two breakpoints (well under the API's limit of four).
+     */
+    static MessageCreateParams toParams(LlmRequest request, ModelResolver modelResolver, CachePolicy cachePolicy) {
+        CacheControlEphemeral cc = cachePolicy.enabled() ? cachePolicy.cacheControl() : null;
+
         MessageCreateParams.Builder builder = MessageCreateParams.builder()
                 .model(modelResolver.resolve(request.model()))
                 .maxTokens(request.maxTokens());
-        request.system().ifPresent(builder::system);
+
+        // System prompt. With caching, render it as a cache-marked text block so
+        // the tools+system prefix is cached; without, the plain string form.
+        request.system().ifPresent(system -> {
+            if (cc != null) {
+                builder.systemOfTextBlockParams(List.of(
+                        TextBlockParam.builder().text(system).cacheControl(cc).build()));
+            } else {
+                builder.system(system);
+            }
+        });
+
         for (Message message : request.messages()) {
             builder.addMessage(toMessageParam(message));
         }
-        for (ToolSpec spec : request.tools()) {
-            builder.addTool(toTool(spec));
+
+        // Tools. When caching without a system prompt, mark the last tool so the
+        // tool definitions are still cached (no later prefix breakpoint covers them).
+        List<ToolSpec> tools = request.tools();
+        boolean markLastTool = cc != null && request.system().isEmpty() && !tools.isEmpty();
+        for (int i = 0; i < tools.size(); i++) {
+            boolean isLast = i == tools.size() - 1;
+            builder.addTool(toTool(tools.get(i), markLastTool && isLast ? cc : null));
         }
+
+        // Rolling conversation breakpoint (auto-placed on the last message block).
+        // LlmRequest guarantees at least one message, so this always caches history.
+        if (cc != null) {
+            builder.cacheControl(cc);
+        }
+
         return builder.build();
     }
 
@@ -161,7 +223,7 @@ public final class AnthropicLlmClient implements LlmClient {
                 .build();
     }
 
-    private static Tool toTool(ToolSpec spec) {
+    private static Tool toTool(ToolSpec spec, CacheControlEphemeral cacheControl) {
         Map<String, Object> schema = spec.inputSchema();
 
         Tool.InputSchema.Properties.Builder properties = Tool.InputSchema.Properties.builder();
@@ -195,11 +257,14 @@ public final class AnthropicLlmClient implements LlmClient {
         }
         Tool.InputSchema inputSchema = inputSchemaBuilder.build();
 
-        return Tool.builder()
+        Tool.Builder toolBuilder = Tool.builder()
                 .name(spec.name())
                 .description(spec.description())
-                .inputSchema(inputSchema)
-                .build();
+                .inputSchema(inputSchema);
+        if (cacheControl != null) {
+            toolBuilder.cacheControl(cacheControl);
+        }
+        return toolBuilder.build();
     }
 
     // --- response mapping ---------------------------------------------------

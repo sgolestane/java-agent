@@ -82,6 +82,37 @@ class BudgetLlmClientTest {
     }
 
     @Test
+    void aBudgetStopIsNotRetriedByRetryingLlmClient() {
+        // BudgetExceededException is not an LlmException, so a retry decorator wrapping
+        // the budget client must let it propagate on the first throw, not retry it.
+        AtomicInteger calls = new AtomicInteger();
+        BudgetLlmClient budgeted = new BudgetLlmClient(
+                usageEach(new TokenUsage(100, 0), calls), TokenBudget.ofTotalTokens(50));
+        RetryingLlmClient retrying = new RetryingLlmClient(
+                budgeted, new RetryPolicy(5, 1, 10, 2.0), d -> { });
+
+        retrying.generate(REQUEST); // spend now 100 >= 50
+        assertThatThrownBy(() -> retrying.generate(REQUEST))
+                .isInstanceOf(BudgetExceededException.class);
+        assertThat(calls).hasValue(1); // the refused call was not retried
+    }
+
+    @Test
+    void resetLetsAnInstanceTrackAFreshRun() {
+        AtomicInteger calls = new AtomicInteger();
+        BudgetLlmClient client = new BudgetLlmClient(
+                usageEach(new TokenUsage(100, 0), calls), TokenBudget.ofTotalTokens(50));
+
+        client.generate(REQUEST); // spend 100 >= 50
+        assertThatThrownBy(() -> client.generate(REQUEST)).isInstanceOf(BudgetExceededException.class);
+
+        client.reset();
+        assertThat(client.spent()).isEqualTo(TokenUsage.ZERO);
+        assertThat(client.generate(REQUEST).message().text()).isEqualTo("ok"); // budget available again
+        assertThat(calls).hasValue(2);
+    }
+
+    @Test
     void costBudgetStopsWhenEstimatedSpendReachesTheCap() {
         // $5/M in, $25/M out. 100k in + 20k out = 100k/1M*5 + 20k/1M*25 = 0.5 + 0.5 = $1.00.
         // With an $0.80 cap, the first call runs (spend $0), pushing the total to $1.00;

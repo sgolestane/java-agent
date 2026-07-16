@@ -152,13 +152,13 @@ class AgentWorkflowTest {
     }
 
     @Test
-    void maxTokensStopsWithBudgetExhausted() {
+    void maxTokensStopsWithOutputTruncated() {
         ScriptedLlm llm = new ScriptedLlm().then(ScriptedLlm.maxTokens("truncated..."));
         start(llm, new SimpleToolRegistry());
 
         AgentRunResult result = run(DurableAgentRun.of(Goal.of("g"), config(3)));
 
-        assertThat(result.stopReason()).isEqualTo(StopReason.BUDGET_EXHAUSTED);
+        assertThat(result.stopReason()).isEqualTo(StopReason.OUTPUT_TRUNCATED);
         assertThat(result.output()).isEqualTo("truncated...");
     }
 

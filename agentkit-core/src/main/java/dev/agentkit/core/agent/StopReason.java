@@ -8,8 +8,14 @@ public enum StopReason {
     COMPLETED,
     /** The configured maximum number of steps was reached. */
     MAX_STEPS,
-    /** The configured token or cost budget was exhausted. */
+    /** The configured cumulative token or cost budget was exhausted (see {@code BudgetLlmClient}). */
     BUDGET_EXHAUSTED,
+    /**
+     * A single turn's output was truncated at the per-call {@code maxTokens} limit.
+     * Distinct from {@link #BUDGET_EXHAUSTED}, which is a run-wide spend cap: this is
+     * one response cut short, so any tool call in that turn may be incomplete.
+     */
+    OUTPUT_TRUNCATED,
     /** A verification or guardrail check rejected the outcome and no recovery was possible. */
     VERIFICATION_FAILED,
     /** The model or a safety layer refused to continue. */

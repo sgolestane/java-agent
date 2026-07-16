@@ -217,7 +217,9 @@ A budget can cap input, output, or total tokens, an estimated dollar cost, or an
 combination — it is exhausted as soon as the running total meets any one cap. The
 check is a pre-flight guard on the spend so far, so the turn that first crosses the
 cap still finishes and delivers its answer; the next turn is the one refused. Keep
-the budget decorator outside `RetryingLlmClient` so retries count against it.
+the budget decorator outside `RetryingLlmClient` so retries count against it. One
+`BudgetLlmClient` tracks one run — build a fresh one per run or call `reset()`
+between runs — and it belongs in the in-process loop, not inside a Temporal activity.
 
 ### Prompt caching
 

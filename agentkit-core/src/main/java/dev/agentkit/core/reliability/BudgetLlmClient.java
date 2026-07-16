@@ -24,6 +24,14 @@ import java.util.concurrent.atomic.AtomicReference;
  * retried. The running total is thread-safe, but the check-then-call is not one
  * atomic step; under concurrent callers the cap is approximate — fine for a single
  * agent loop, which calls serially.
+ *
+ * <p>The tally is instance state that spans every call, so one instance tracks
+ * <em>one run</em>: build a fresh {@code BudgetLlmClient} per run, or call
+ * {@link #reset()} between runs, otherwise a reused instance carries its spend
+ * forward and a later run can start already exhausted. For the same reason this
+ * belongs in the in-process agent loop and <em>not</em> inside a Temporal activity,
+ * where the instance would be shared across every workflow the worker serves and a
+ * thrown {@link BudgetExceededException} would be retried by Temporal.
  */
 public final class BudgetLlmClient implements LlmClient {
 
@@ -50,5 +58,10 @@ public final class BudgetLlmClient implements LlmClient {
     /** The cumulative usage recorded so far. */
     public TokenUsage spent() {
         return spent.get();
+    }
+
+    /** Clears the running total so this instance can track a fresh run. */
+    public void reset() {
+        spent.set(TokenUsage.ZERO);
     }
 }

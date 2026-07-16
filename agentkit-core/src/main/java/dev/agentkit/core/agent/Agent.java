@@ -163,9 +163,10 @@ public final class Agent {
                     return finish(AgentResult.stopped(StopReason.PAUSED, lastText, steps, totalUsage));
                 }
                 case MAX_TOKENS -> {
-                    // Output was truncated. Any tool call in this turn may be
-                    // incomplete, so stop rather than execute a partial call.
-                    return finish(AgentResult.stopped(StopReason.BUDGET_EXHAUSTED, lastText, steps, totalUsage));
+                    // This turn's output was truncated at the per-call maxTokens limit.
+                    // Any tool call in this turn may be incomplete, so stop rather than
+                    // execute a partial call. This is distinct from a run-wide budget stop.
+                    return finish(AgentResult.stopped(StopReason.OUTPUT_TRUNCATED, lastText, steps, totalUsage));
                 }
                 default -> {
                     // END_TURN / OTHER: finish if no tools, else run them and continue.

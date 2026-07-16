@@ -115,12 +115,13 @@ class AgentTest {
     }
 
     @Test
-    void maxTokensMapsToBudgetExhausted() {
+    void maxTokensMapsToOutputTruncated() {
         FakeLlmClient llm = new FakeLlmClient(FakeLlmClient.maxTokens("truncated..."));
 
         AgentResult result = agent(llm).run(Goal.of("write a very long essay"));
 
-        assertThat(result.stopReason()).isEqualTo(StopReason.BUDGET_EXHAUSTED);
+        // A per-turn truncation, distinct from a run-wide BUDGET_EXHAUSTED stop.
+        assertThat(result.stopReason()).isEqualTo(StopReason.OUTPUT_TRUNCATED);
         assertThat(result.output()).isEqualTo("truncated...");
     }
 

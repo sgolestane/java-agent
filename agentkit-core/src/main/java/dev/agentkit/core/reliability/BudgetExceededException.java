@@ -19,7 +19,15 @@ public final class BudgetExceededException extends RuntimeException {
         this.spent = spent;
     }
 
-    /** The cumulative usage that tripped the budget. */
+    /**
+     * The cumulative usage that tripped the budget.
+     *
+     * <p>The field is {@code transient} (its {@code TokenUsage} is not serializable),
+     * so this returns {@code null} after any serialization round-trip — including
+     * across a Temporal failure boundary, which preserves only type, message, and
+     * stack trace. Reliable only on a freshly thrown, in-process instance; the
+     * message (from {@link #getMessage()}) always carries the breach detail.
+     */
     public TokenUsage spent() {
         return spent;
     }

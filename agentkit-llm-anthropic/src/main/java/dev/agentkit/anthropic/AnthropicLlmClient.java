@@ -3,6 +3,7 @@ package dev.agentkit.anthropic;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
@@ -53,9 +54,10 @@ public final class AnthropicLlmClient implements LlmClient {
 
     private final AnthropicClient client;
     private final ModelResolver modelResolver;
+    private final CachePolicy cachePolicy;
 
     public AnthropicLlmClient(AnthropicClient client) {
-        this(client, ModelResolver.IDENTITY);
+        this(client, ModelResolver.IDENTITY, CachePolicy.NONE);
     }
 
     /**
@@ -66,20 +68,36 @@ public final class AnthropicLlmClient implements LlmClient {
      * {@link ModelResolver#IDENTITY}.
      */
     public AnthropicLlmClient(AnthropicClient client, ModelResolver modelResolver) {
-        this.client = Objects.requireNonNull(client, "client");
-        this.modelResolver = Objects.requireNonNull(modelResolver, "modelResolver");
+        this(client, modelResolver, CachePolicy.NONE);
     }
 
-    /** Builds a client from the {@code ANTHROPIC_API_KEY} environment variable. */
+    /**
+     * As {@link #AnthropicLlmClient(AnthropicClient, ModelResolver)}, plus a
+     * {@link CachePolicy} that adds prompt-cache breakpoints to each request.
+     * Enabling caching is recommended for agent loops, which re-send a large stable
+     * prefix every turn.
+     */
+    public AnthropicLlmClient(AnthropicClient client, ModelResolver modelResolver, CachePolicy cachePolicy) {
+        this.client = Objects.requireNonNull(client, "client");
+        this.modelResolver = Objects.requireNonNull(modelResolver, "modelResolver");
+        this.cachePolicy = Objects.requireNonNull(cachePolicy, "cachePolicy");
+    }
+
+    /** Builds a client from the {@code ANTHROPIC_API_KEY} environment variable (no caching). */
     public static AnthropicLlmClient fromEnv() {
-        return new AnthropicLlmClient(AnthropicOkHttpClient.fromEnv());
+        return fromEnv(CachePolicy.NONE);
+    }
+
+    /** As {@link #fromEnv()}, with the given prompt-caching {@code cachePolicy}. */
+    public static AnthropicLlmClient fromEnv(CachePolicy cachePolicy) {
+        return new AnthropicLlmClient(AnthropicOkHttpClient.fromEnv(), ModelResolver.IDENTITY, cachePolicy);
     }
 
     @Override
     public LlmResponse generate(LlmRequest request) {
         Objects.requireNonNull(request, "request");
         try {
-            MessageCreateParams params = toParams(request, modelResolver);
+            MessageCreateParams params = toParams(request, modelResolver, cachePolicy);
             com.anthropic.models.messages.Message response = client.messages().create(params);
             return toLlmResponse(response);
         } catch (LlmException e) {
@@ -92,24 +110,75 @@ public final class AnthropicLlmClient implements LlmClient {
     // --- request mapping ----------------------------------------------------
 
     static MessageCreateParams toParams(LlmRequest request) {
-        return toParams(request, ModelResolver.IDENTITY);
+        return toParams(request, ModelResolver.IDENTITY, CachePolicy.NONE);
     }
 
     static MessageCreateParams toParams(LlmRequest request, ModelResolver modelResolver) {
+        return toParams(request, modelResolver, CachePolicy.NONE);
+    }
+
+    /**
+     * Maps the request, optionally adding prompt-cache breakpoints. The render
+     * order is tools &rarr; system &rarr; messages, and a breakpoint caches
+     * everything up to and including it, so the placement is:
+     * <ul>
+     *   <li>the <b>stable prefix</b> (tools + system) is cached by marking the
+     *       system prompt (which renders after the tools); with no system prompt,
+     *       the last tool is marked instead, so the tool definitions still cache;</li>
+     *   <li>the <b>growing conversation</b> is cached by an explicit breakpoint on
+     *       the last content block of the last message — so each turn's history is
+     *       a cache read on the next turn.</li>
+     * </ul>
+     * That is at most two breakpoints (well under the API's limit of four). Both are
+     * <em>explicit</em> per-block breakpoints (not top-level automatic caching), so
+     * they work on Amazon Bedrock as well as the first-party API.
+     */
+    static MessageCreateParams toParams(LlmRequest request, ModelResolver modelResolver, CachePolicy cachePolicy) {
+        CacheControlEphemeral cc = cachePolicy.enabled() ? cachePolicy.cacheControl() : null;
+
         MessageCreateParams.Builder builder = MessageCreateParams.builder()
                 .model(modelResolver.resolve(request.model()))
                 .maxTokens(request.maxTokens());
-        request.system().ifPresent(builder::system);
-        for (Message message : request.messages()) {
-            builder.addMessage(toMessageParam(message));
+
+        // System prompt. With caching, render it as a cache-marked text block so
+        // the tools+system prefix is cached; without, the plain string form.
+        request.system().ifPresent(system -> {
+            if (cc != null) {
+                builder.systemOfTextBlockParams(List.of(
+                        TextBlockParam.builder().text(system).cacheControl(cc).build()));
+            } else {
+                builder.system(system);
+            }
+        });
+
+        // Rolling conversation breakpoint: mark the last content block of the last
+        // message (LlmRequest guarantees at least one message).
+        List<Message> messages = request.messages();
+        for (int i = 0; i < messages.size(); i++) {
+            CacheControlEphemeral messageCc = i == messages.size() - 1 ? cc : null;
+            builder.addMessage(toMessageParam(messages.get(i), messageCc));
         }
-        for (ToolSpec spec : request.tools()) {
-            builder.addTool(toTool(spec));
+
+        // Tools. When caching without a system prompt, mark the last tool so the
+        // tool definitions are still cached (no later prefix breakpoint covers them).
+        List<ToolSpec> tools = request.tools();
+        boolean markLastTool = cc != null && request.system().isEmpty() && !tools.isEmpty();
+        for (int i = 0; i < tools.size(); i++) {
+            boolean isLast = i == tools.size() - 1;
+            builder.addTool(toTool(tools.get(i), markLastTool && isLast ? cc : null));
         }
+
         return builder.build();
     }
 
-    private static MessageParam toMessageParam(Message message) {
+    /**
+     * Maps a message. When {@code cacheControl} is non-null it is applied to the
+     * <em>last</em> content block, placing an explicit cache breakpoint at the end
+     * of the conversation. (Thinking blocks carry no breakpoint — an unsigned one is
+     * dropped entirely — but a thinking block never terminates a request's last
+     * message, which is a user turn: text or tool results.)
+     */
+    private static MessageParam toMessageParam(Message message, CacheControlEphemeral cacheControl) {
         MessageParam.Role role = switch (message.role()) {
             case USER -> MessageParam.Role.USER;
             case ASSISTANT -> MessageParam.Role.ASSISTANT;
@@ -118,8 +187,10 @@ public final class AnthropicLlmClient implements LlmClient {
         };
 
         List<ContentBlockParam> blocks = new ArrayList<>();
-        for (ContentBlock block : message.content()) {
-            toContentBlockParam(block).ifPresent(blocks::add);
+        List<ContentBlock> content = message.content();
+        for (int i = 0; i < content.size(); i++) {
+            CacheControlEphemeral blockCc = i == content.size() - 1 ? cacheControl : null;
+            toContentBlockParam(content.get(i), blockCc).ifPresent(blocks::add);
         }
         if (blocks.isEmpty()) {
             blocks.add(ContentBlockParam.ofText(TextBlockParam.builder().text("(no content)").build()));
@@ -127,20 +198,28 @@ public final class AnthropicLlmClient implements LlmClient {
         return MessageParam.builder().role(role).contentOfBlockParams(blocks).build();
     }
 
-    private static java.util.Optional<ContentBlockParam> toContentBlockParam(ContentBlock block) {
+    private static java.util.Optional<ContentBlockParam> toContentBlockParam(
+            ContentBlock block, CacheControlEphemeral cc) {
         return switch (block) {
-            case TextBlock t ->
-                    java.util.Optional.of(ContentBlockParam.ofText(
-                            TextBlockParam.builder().text(t.text()).build()));
+            case TextBlock t -> {
+                TextBlockParam.Builder b = TextBlockParam.builder().text(t.text());
+                if (cc != null) {
+                    b.cacheControl(cc);
+                }
+                yield java.util.Optional.of(ContentBlockParam.ofText(b.build()));
+            }
             case ToolUseBlock u ->
-                    java.util.Optional.of(ContentBlockParam.ofToolUse(toToolUseParam(u)));
-            case ToolResultBlock r ->
-                    java.util.Optional.of(ContentBlockParam.ofToolResult(
-                            ToolResultBlockParam.builder()
-                                    .toolUseId(r.toolUseId())
-                                    .content(r.content())
-                                    .isError(r.isError())
-                                    .build()));
+                    java.util.Optional.of(ContentBlockParam.ofToolUse(toToolUseParam(u, cc)));
+            case ToolResultBlock r -> {
+                ToolResultBlockParam.Builder b = ToolResultBlockParam.builder()
+                        .toolUseId(r.toolUseId())
+                        .content(r.content())
+                        .isError(r.isError());
+                if (cc != null) {
+                    b.cacheControl(cc);
+                }
+                yield java.util.Optional.of(ContentBlockParam.ofToolResult(b.build()));
+            }
             case ThinkingBlock th -> th.signature().isBlank()
                     ? java.util.Optional.empty() // cannot replay an unsigned thinking block
                     : java.util.Optional.of(ContentBlockParam.ofThinking(
@@ -151,17 +230,20 @@ public final class AnthropicLlmClient implements LlmClient {
         };
     }
 
-    private static ToolUseBlockParam toToolUseParam(ToolUseBlock use) {
+    private static ToolUseBlockParam toToolUseParam(ToolUseBlock use, CacheControlEphemeral cc) {
         ToolUseBlockParam.Input.Builder input = ToolUseBlockParam.Input.builder();
         use.input().forEach((k, v) -> input.putAdditionalProperty(k, JsonValue.from(v)));
-        return ToolUseBlockParam.builder()
+        ToolUseBlockParam.Builder builder = ToolUseBlockParam.builder()
                 .id(use.id())
                 .name(use.name())
-                .input(input.build())
-                .build();
+                .input(input.build());
+        if (cc != null) {
+            builder.cacheControl(cc);
+        }
+        return builder.build();
     }
 
-    private static Tool toTool(ToolSpec spec) {
+    private static Tool toTool(ToolSpec spec, CacheControlEphemeral cacheControl) {
         Map<String, Object> schema = spec.inputSchema();
 
         Tool.InputSchema.Properties.Builder properties = Tool.InputSchema.Properties.builder();
@@ -195,11 +277,14 @@ public final class AnthropicLlmClient implements LlmClient {
         }
         Tool.InputSchema inputSchema = inputSchemaBuilder.build();
 
-        return Tool.builder()
+        Tool.Builder toolBuilder = Tool.builder()
                 .name(spec.name())
                 .description(spec.description())
-                .inputSchema(inputSchema)
-                .build();
+                .inputSchema(inputSchema);
+        if (cacheControl != null) {
+            toolBuilder.cacheControl(cacheControl);
+        }
+        return toolBuilder.build();
     }
 
     // --- response mapping ---------------------------------------------------

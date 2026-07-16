@@ -53,6 +53,13 @@ public final class ApprovalDecision {
      * Approve the invocation, but replace its arguments with {@code arguments}. The
      * tool then runs with the edited values; its id and name are unchanged.
      *
+     * <p>This is a <em>full</em> replacement, not a merge: {@code arguments} becomes
+     * the entire argument map. When several approval gates are composed with
+     * {@link ToolGates#allOf}, each sees the prior gate's edited invocation, so an
+     * approver that wants to keep earlier edits should build its map from the
+     * invocation it receives ({@code invocation.arguments()}) rather than from
+     * scratch — otherwise it silently drops them.
+     *
      * @throws NullPointerException if {@code arguments} is null
      */
     public static ApprovalDecision approveWithArguments(Map<String, Object> arguments) {

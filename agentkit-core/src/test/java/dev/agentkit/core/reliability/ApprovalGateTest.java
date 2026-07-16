@@ -102,6 +102,30 @@ class ApprovalGateTest {
     }
 
     @Test
+    void allOfLetsTwoEditingGatesEachContributeWhenTheySecondBuildsOnTheFirst() {
+        // Gate A caps the amount; gate B rebuilds from the invocation it receives
+        // (which already has A's edit) and adds a note — so both edits survive.
+        ToolGate capAmount = ToolGates.requireApproval(i -> true,
+                i -> ApprovalDecision.approveWithArguments(withEntry(i.arguments(), "amount", 10)));
+        ToolGate addNote = ToolGates.requireApproval(i -> true,
+                i -> ApprovalDecision.approveWithArguments(withEntry(i.arguments(), "note", "reviewed")));
+
+        GateResult result = ToolGates.allOf(capAmount, addNote)
+                .evaluate(inv("wire", Map.of("amount", 1_000_000, "recipient", "acme")));
+
+        ToolInvocation effective = result.replacement().orElseThrow();
+        assertThat(effective.argument("amount")).isEqualTo(10);       // A's edit survived
+        assertThat(effective.argument("note")).isEqualTo("reviewed"); // B's edit applied
+        assertThat(effective.argument("recipient")).isEqualTo("acme"); // untouched original
+    }
+
+    private static Map<String, Object> withEntry(Map<String, Object> base, String key, Object value) {
+        var copy = new java.util.LinkedHashMap<String, Object>(base);
+        copy.put(key, value);
+        return copy;
+    }
+
+    @Test
     void allOfWithNoEditsReturnsAPlainAllow() {
         ToolGate combined = ToolGates.allOf(ToolGates.allowAll(), ToolGates.allowAll());
         assertThat(combined.evaluate(inv("read", Map.of())).replacement()).isEmpty();

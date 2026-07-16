@@ -195,6 +195,30 @@ Not every check needs a model. `Verifiers` supplies deterministic checks —
 `Verifiers.allOf(...)` composes a cheap structural check ahead of the LLM critic
 so a run is gated on both, short-circuiting before spending a call.
 
+### Token & cost budgets
+
+Cap what an unsupervised run may spend. `BudgetLlmClient` is an `LlmClient`
+decorator that tallies token usage across turns and refuses the next model call
+once a `TokenBudget` is reached — the agent loop turns that into a
+`BUDGET_EXHAUSTED` stop rather than an error:
+
+```java
+TokenBudget budget = TokenBudget.builder()
+        .maxTotalTokens(1_000_000)
+        .maxCostUsd(5.00, ModelPricing.of(5.00, 25.00)) // $/1M in, $/1M out
+        .build();
+
+LlmClient budgeted = new BudgetLlmClient(reliable, budget); // wraps retry
+AgentResult result = new Agent(budgeted, tools, config).run(goal);
+// result.stopReason() == BUDGET_EXHAUSTED once the cap is hit; result.usage() has the tally.
+```
+
+A budget can cap input, output, or total tokens, an estimated dollar cost, or any
+combination — it is exhausted as soon as the running total meets any one cap. The
+check is a pre-flight guard on the spend so far, so the turn that first crosses the
+cap still finishes and delivers its answer; the next turn is the one refused. Keep
+the budget decorator outside `RetryingLlmClient` so retries count against it.
+
 ### Prompt caching
 
 An agent loop re-sends the same large prefix — tool definitions and the system

@@ -1,0 +1,54 @@
+package dev.agentkit.core.reliability;
+
+import dev.agentkit.core.llm.LlmClient;
+import dev.agentkit.core.llm.LlmRequest;
+import dev.agentkit.core.llm.LlmResponse;
+import dev.agentkit.core.llm.TokenUsage;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * An {@link LlmClient} decorator that enforces a {@link TokenBudget} across a run,
+ * so an unsupervised agent cannot burn unbounded tokens (or dollars).
+ *
+ * <p>It accumulates the {@link TokenUsage} of every response and, before each call,
+ * refuses to proceed once the budget is exhausted by throwing a
+ * {@link BudgetExceededException}. The check is a pre-flight guard on the spend so
+ * far — a turn's cost is unknown until it returns — so the turn that first reaches
+ * the cap still completes and its answer is delivered; the <em>next</em> turn is the
+ * one that is refused. The agent loop turns that exception into a
+ * {@code BUDGET_EXHAUSTED} stop.
+ *
+ * <p>Place this decorator <em>outside</em> a {@link RetryingLlmClient} (budget wraps
+ * retry) so retries count against the budget and a budget stop is never itself
+ * retried. The running total is thread-safe, but the check-then-call is not one
+ * atomic step; under concurrent callers the cap is approximate — fine for a single
+ * agent loop, which calls serially.
+ */
+public final class BudgetLlmClient implements LlmClient {
+
+    private final LlmClient delegate;
+    private final TokenBudget budget;
+    private final AtomicReference<TokenUsage> spent = new AtomicReference<>(TokenUsage.ZERO);
+
+    public BudgetLlmClient(LlmClient delegate, TokenBudget budget) {
+        this.delegate = Objects.requireNonNull(delegate, "delegate");
+        this.budget = Objects.requireNonNull(budget, "budget");
+    }
+
+    @Override
+    public LlmResponse generate(LlmRequest request) {
+        TokenUsage current = spent.get();
+        if (budget.isExhausted(current)) {
+            throw new BudgetExceededException(budget, current);
+        }
+        LlmResponse response = delegate.generate(request);
+        spent.updateAndGet(u -> u.plus(response.usage()));
+        return response;
+    }
+
+    /** The cumulative usage recorded so far. */
+    public TokenUsage spent() {
+        return spent.get();
+    }
+}

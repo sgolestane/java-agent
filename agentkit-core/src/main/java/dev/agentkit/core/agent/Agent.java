@@ -3,6 +3,7 @@ package dev.agentkit.core.agent;
 import dev.agentkit.core.context.ContextStrategy;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmRequest;
+import dev.agentkit.core.reliability.BudgetExceededException;
 import dev.agentkit.core.reliability.GateResult;
 import dev.agentkit.core.reliability.ToolGate;
 import dev.agentkit.core.llm.LlmResponse;
@@ -136,6 +137,10 @@ public final class Agent {
             LlmResponse response;
             try {
                 response = llm.generate(buildRequest(conversation));
+            } catch (BudgetExceededException e) {
+                // A deliberate stop from a BudgetLlmClient, not a failure.
+                log.info("Stopping before step {}: {}", steps + 1, e.getMessage());
+                return finish(AgentResult.stopped(StopReason.BUDGET_EXHAUSTED, lastText, steps, totalUsage));
             } catch (RuntimeException e) {
                 log.warn("Model call failed on step {}", steps + 1, e);
                 return finish(AgentResult.failed(e, steps, totalUsage));

@@ -51,7 +51,7 @@ Goal
 │    3. on stop reason:                                        │
 │         END_TURN, no tools  → COMPLETED                      │
 │         tool_use            → run tools, append results, loop│
-│         REFUSAL/PAUSE/MAX_TOKENS → stop with that reason     │
+│         REFUSAL→REFUSED, PAUSE→PAUSED, MAX_TOKENS→TRUNCATED  │
 │    4. each tool: ToolGate.evaluate → Tool.execute           │
 └─────────────────────────────────────────────────────────────┘
  │

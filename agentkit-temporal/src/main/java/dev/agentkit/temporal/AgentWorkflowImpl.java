@@ -92,8 +92,10 @@ public final class AgentWorkflowImpl implements AgentWorkflow {
                     return AgentRunResult.of(StopReason.PAUSED, lastText, steps, totalUsage);
                 }
                 case MAX_TOKENS -> {
-                    // Output truncated: a tool call this turn may be incomplete, so stop.
-                    return AgentRunResult.of(StopReason.BUDGET_EXHAUSTED, lastText, steps, totalUsage);
+                    // This turn's output was truncated at the per-call maxTokens limit; a
+                    // tool call this turn may be incomplete, so stop. Distinct from a
+                    // run-wide budget stop.
+                    return AgentRunResult.of(StopReason.OUTPUT_TRUNCATED, lastText, steps, totalUsage);
                 }
                 default -> {
                     // END_TURN / OTHER: finish if no tools, else run them and continue.

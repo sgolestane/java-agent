@@ -115,12 +115,13 @@ class AgentTest {
     }
 
     @Test
-    void maxTokensMapsToBudgetExhausted() {
+    void maxTokensMapsToOutputTruncated() {
         FakeLlmClient llm = new FakeLlmClient(FakeLlmClient.maxTokens("truncated..."));
 
         AgentResult result = agent(llm).run(Goal.of("write a very long essay"));
 
-        assertThat(result.stopReason()).isEqualTo(StopReason.BUDGET_EXHAUSTED);
+        // A per-turn truncation, distinct from a run-wide BUDGET_EXHAUSTED stop.
+        assertThat(result.stopReason()).isEqualTo(StopReason.OUTPUT_TRUNCATED);
         assertThat(result.output()).isEqualTo("truncated...");
     }
 
@@ -166,6 +167,29 @@ class AgentTest {
         // 10+2 input, 5+6 output across the two turns
         assertThat(result.usage().inputTokens()).isEqualTo(12);
         assertThat(result.usage().outputTokens()).isEqualTo(11);
+    }
+
+    @Test
+    void budgetExhaustionStopsWithBudgetExhaustedNotError() {
+        Tool noop = FunctionTool.builder("noop", "no-op").handler(inv -> ToolResult.ok("ok")).build();
+        // Two turns are scripted, but a 40-token cap only lets the first run: it
+        // spends 50 (0 < 40 at the guard), pushing the total to 50, and the second
+        // turn is refused (50 >= 40) before it reaches the model.
+        FakeLlmClient llm = new FakeLlmClient(
+                FakeLlmClient.toolUseWithUsage("t1", "noop", Map.of(),
+                        new dev.agentkit.core.llm.TokenUsage(30, 20)),
+                FakeLlmClient.textWithUsage("should not run", new dev.agentkit.core.llm.TokenUsage(1, 1)));
+        var budgeted = new dev.agentkit.core.reliability.BudgetLlmClient(
+                llm, dev.agentkit.core.reliability.TokenBudget.ofTotalTokens(40));
+
+        AgentResult result = new Agent(budgeted, new SimpleToolRegistry(java.util.List.of(noop)), CONFIG)
+                .run(Goal.of("keep going"));
+
+        assertThat(result.stopReason()).isEqualTo(StopReason.BUDGET_EXHAUSTED);
+        assertThat(result.error()).isEmpty();
+        assertThat(result.steps()).isEqualTo(1); // only the first turn completed
+        assertThat(result.usage()).isEqualTo(new dev.agentkit.core.llm.TokenUsage(30, 20));
+        assertThat(llm.received()).hasSize(1); // the second turn never reached the client
     }
 
     @Test

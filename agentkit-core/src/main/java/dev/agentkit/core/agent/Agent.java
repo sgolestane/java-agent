@@ -219,7 +219,10 @@ public final class Agent {
                 log.info("Tool '{}' blocked by gate: {}", invocation.name(), gate.reason());
                 return ToolResult.error(gate.reason());
             }
-            return tool.get().execute(invocation);
+            // A gate may approve with edited arguments (e.g. a human narrowing scope);
+            // run the substitute if present, otherwise the invocation as proposed.
+            ToolInvocation effective = gate.replacement().orElse(invocation);
+            return tool.get().execute(effective);
         } catch (RuntimeException e) {
             // A thrown gate/confirmation handler or tool must not abort the run.
             log.warn("Tool '{}' failed (gate or execution threw)", invocation.name(), e);

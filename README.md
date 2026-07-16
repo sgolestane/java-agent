@@ -195,6 +195,31 @@ Not every check needs a model. `Verifiers` supplies deterministic checks —
 `Verifiers.allOf(...)` composes a cheap structural check ahead of the LLM critic
 so a run is gated on both, short-circuiting before spending a call.
 
+### Human-in-the-loop approval
+
+`denyTools` blocks outright; `requireApproval` routes a risky tool through a human
+(or a policy) that can approve it, reject it with a reason the model sees, or
+approve it with **edited arguments** — the classic "review and adjust before it
+runs" pattern:
+
+```java
+Approver approver = invocation -> {
+    long amount = ((Number) invocation.argument("amount")).longValue();
+    if (amount <= 1_000) return ApprovalDecision.approve();          // auto-approve small
+    if (amount <= 100_000) return ApprovalDecision.approveWithArguments(
+            Map.of("amount", 100_000, "recipient", invocation.argument("recipient"))); // cap it
+    return ApprovalDecision.deny("Wires over $100k need a second signer."); // reason reaches the model
+};
+
+Agent agent = Agent.builder(reliable, tools, config)
+        .toolGate(ToolGates.requireApproval(i -> i.name().equals("send_wire"), approver))
+        .build();
+```
+
+The review runs on the agent thread, so `Approver.DENY_ALL` is the safe default for
+unattended runs; `requireConfirmation` remains the yes/no shortcut. `ToolGates.allOf`
+composes an approval gate with a `denyTools` policy.
+
 ### Token & cost budgets
 
 Cap what an unsupervised run may spend. `BudgetLlmClient` is an `LlmClient`

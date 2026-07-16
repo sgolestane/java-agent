@@ -51,6 +51,7 @@ agentkit-core/          # provider-agnostic core
 agentkit-llm-anthropic/ # LlmClient over the Anthropic Java SDK (claude-opus-4-8)
 agentkit-llm-bedrock/   # the Anthropic adapter on Claude via Amazon Bedrock
 agentkit-temporal/      # agent loop as a Temporal workflow
+agentkit-mcp/           # tools from a Model Context Protocol server
 agentkit-examples/      # runnable end-to-end demos
 ```
 
@@ -268,6 +269,27 @@ returned `AgentResult` is unchanged — the stream is a live view, not a differe
 result. Only text is streamed; tool-use and thinking blocks arrive whole in the
 completed turn. You can also stream a single call directly:
 `llm.generate(request, delta -> ...)`.
+
+### MCP tools
+
+`agentkit-mcp` exposes the tools of a [Model Context Protocol](https://modelcontextprotocol.io)
+server as ordinary AgentKit tools, so the agent can use a filesystem, database, or
+any other MCP server the same way it uses local tools. The connection speaks
+JSON-RPC over the server subprocess's stdio — no extra dependency beyond Jackson:
+
+```java
+try (McpConnection mcp = StdioMcpConnection.start(List.of("npx", "-y", "@modelcontextprotocol/server-filesystem", "/data"))) {
+    ToolRegistry tools = McpTools.registry(mcp);          // or McpTools.load(mcp) to merge with local tools
+    new Agent(llm, tools, config).run(Goal.of("Summarize the files in /data"));
+}
+```
+
+`StdioMcpConnection.start` launches the server and completes the `initialize`
+handshake; `McpTools` calls `tools/list` and wraps each tool. A server-flagged
+error, or a transport failure, comes back to the model as an error tool result
+rather than aborting the run — matching the loop's contract for local tools. The
+transport is behind an `McpConnection` seam, so the bridge is provider-agnostic and
+testable without a live server.
 
 ### Prompt caching
 

@@ -18,6 +18,7 @@
         <module>agentkit-llm-anthropic</module>
         <module>agentkit-llm-bedrock</module>
         <module>agentkit-temporal</module>
+        <module>agentkit-mcp</module>
         <module>agentkit-examples</module>
     </modules>
 
@@ -69,6 +70,11 @@
             <dependency>
                 <groupId>dev.agentkit</groupId>
                 <artifactId>agentkit-temporal</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.agentkit</groupId>
+                <artifactId>agentkit-mcp</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

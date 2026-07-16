@@ -125,11 +125,13 @@ public final class AnthropicLlmClient implements LlmClient {
      *   <li>the <b>stable prefix</b> (tools + system) is cached by marking the
      *       system prompt (which renders after the tools); with no system prompt,
      *       the last tool is marked instead, so the tool definitions still cache;</li>
-     *   <li>the <b>growing conversation</b> is cached by a top-level breakpoint,
-     *       which the API auto-places on the last message block — so each turn's
-     *       history is a cache read on the next turn.</li>
+     *   <li>the <b>growing conversation</b> is cached by an explicit breakpoint on
+     *       the last content block of the last message — so each turn's history is
+     *       a cache read on the next turn.</li>
      * </ul>
-     * That is at most two breakpoints (well under the API's limit of four).
+     * That is at most two breakpoints (well under the API's limit of four). Both are
+     * <em>explicit</em> per-block breakpoints (not top-level automatic caching), so
+     * they work on Amazon Bedrock as well as the first-party API.
      */
     static MessageCreateParams toParams(LlmRequest request, ModelResolver modelResolver, CachePolicy cachePolicy) {
         CacheControlEphemeral cc = cachePolicy.enabled() ? cachePolicy.cacheControl() : null;
@@ -149,8 +151,12 @@ public final class AnthropicLlmClient implements LlmClient {
             }
         });
 
-        for (Message message : request.messages()) {
-            builder.addMessage(toMessageParam(message));
+        // Rolling conversation breakpoint: mark the last content block of the last
+        // message (LlmRequest guarantees at least one message).
+        List<Message> messages = request.messages();
+        for (int i = 0; i < messages.size(); i++) {
+            CacheControlEphemeral messageCc = i == messages.size() - 1 ? cc : null;
+            builder.addMessage(toMessageParam(messages.get(i), messageCc));
         }
 
         // Tools. When caching without a system prompt, mark the last tool so the
@@ -162,16 +168,17 @@ public final class AnthropicLlmClient implements LlmClient {
             builder.addTool(toTool(tools.get(i), markLastTool && isLast ? cc : null));
         }
 
-        // Rolling conversation breakpoint (auto-placed on the last message block).
-        // LlmRequest guarantees at least one message, so this always caches history.
-        if (cc != null) {
-            builder.cacheControl(cc);
-        }
-
         return builder.build();
     }
 
-    private static MessageParam toMessageParam(Message message) {
+    /**
+     * Maps a message. When {@code cacheControl} is non-null it is applied to the
+     * <em>last</em> content block, placing an explicit cache breakpoint at the end
+     * of the conversation. (A trailing unsigned thinking block is dropped and can't
+     * carry a breakpoint, but that never occurs as a request's last block, which is
+     * always a user turn — text or tool results.)
+     */
+    private static MessageParam toMessageParam(Message message, CacheControlEphemeral cacheControl) {
         MessageParam.Role role = switch (message.role()) {
             case USER -> MessageParam.Role.USER;
             case ASSISTANT -> MessageParam.Role.ASSISTANT;
@@ -180,8 +187,10 @@ public final class AnthropicLlmClient implements LlmClient {
         };
 
         List<ContentBlockParam> blocks = new ArrayList<>();
-        for (ContentBlock block : message.content()) {
-            toContentBlockParam(block).ifPresent(blocks::add);
+        List<ContentBlock> content = message.content();
+        for (int i = 0; i < content.size(); i++) {
+            CacheControlEphemeral blockCc = i == content.size() - 1 ? cacheControl : null;
+            toContentBlockParam(content.get(i), blockCc).ifPresent(blocks::add);
         }
         if (blocks.isEmpty()) {
             blocks.add(ContentBlockParam.ofText(TextBlockParam.builder().text("(no content)").build()));
@@ -189,20 +198,28 @@ public final class AnthropicLlmClient implements LlmClient {
         return MessageParam.builder().role(role).contentOfBlockParams(blocks).build();
     }
 
-    private static java.util.Optional<ContentBlockParam> toContentBlockParam(ContentBlock block) {
+    private static java.util.Optional<ContentBlockParam> toContentBlockParam(
+            ContentBlock block, CacheControlEphemeral cc) {
         return switch (block) {
-            case TextBlock t ->
-                    java.util.Optional.of(ContentBlockParam.ofText(
-                            TextBlockParam.builder().text(t.text()).build()));
+            case TextBlock t -> {
+                TextBlockParam.Builder b = TextBlockParam.builder().text(t.text());
+                if (cc != null) {
+                    b.cacheControl(cc);
+                }
+                yield java.util.Optional.of(ContentBlockParam.ofText(b.build()));
+            }
             case ToolUseBlock u ->
-                    java.util.Optional.of(ContentBlockParam.ofToolUse(toToolUseParam(u)));
-            case ToolResultBlock r ->
-                    java.util.Optional.of(ContentBlockParam.ofToolResult(
-                            ToolResultBlockParam.builder()
-                                    .toolUseId(r.toolUseId())
-                                    .content(r.content())
-                                    .isError(r.isError())
-                                    .build()));
+                    java.util.Optional.of(ContentBlockParam.ofToolUse(toToolUseParam(u, cc)));
+            case ToolResultBlock r -> {
+                ToolResultBlockParam.Builder b = ToolResultBlockParam.builder()
+                        .toolUseId(r.toolUseId())
+                        .content(r.content())
+                        .isError(r.isError());
+                if (cc != null) {
+                    b.cacheControl(cc);
+                }
+                yield java.util.Optional.of(ContentBlockParam.ofToolResult(b.build()));
+            }
             case ThinkingBlock th -> th.signature().isBlank()
                     ? java.util.Optional.empty() // cannot replay an unsigned thinking block
                     : java.util.Optional.of(ContentBlockParam.ofThinking(
@@ -213,14 +230,17 @@ public final class AnthropicLlmClient implements LlmClient {
         };
     }
 
-    private static ToolUseBlockParam toToolUseParam(ToolUseBlock use) {
+    private static ToolUseBlockParam toToolUseParam(ToolUseBlock use, CacheControlEphemeral cc) {
         ToolUseBlockParam.Input.Builder input = ToolUseBlockParam.Input.builder();
         use.input().forEach((k, v) -> input.putAdditionalProperty(k, JsonValue.from(v)));
-        return ToolUseBlockParam.builder()
+        ToolUseBlockParam.Builder builder = ToolUseBlockParam.builder()
                 .id(use.id())
                 .name(use.name())
-                .input(input.build())
-                .build();
+                .input(input.build());
+        if (cc != null) {
+            builder.cacheControl(cc);
+        }
+        return builder.build();
     }
 
     private static Tool toTool(ToolSpec spec, CacheControlEphemeral cacheControl) {

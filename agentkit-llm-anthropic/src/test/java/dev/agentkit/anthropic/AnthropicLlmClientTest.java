@@ -3,6 +3,7 @@ package dev.agentkit.anthropic;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.anthropic.models.messages.CacheControlEphemeral;
+import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.StopReason;
 import dev.agentkit.core.llm.LlmRequest;
@@ -101,18 +102,26 @@ class AnthropicLlmClientTest {
                 .build();
     }
 
+    /** The cache_control on the last content block of the last message (a text block). */
+    private static java.util.Optional<CacheControlEphemeral> lastMessageBreakpoint(MessageCreateParams params) {
+        List<ContentBlockParam> blocks = params.messages()
+                .get(params.messages().size() - 1).content().asBlockParams();
+        return blocks.get(blocks.size() - 1).text().orElseThrow().cacheControl();
+    }
+
     @Test
     void noCachingLeavesSystemAsAStringWithNoBreakpoints() {
         MessageCreateParams params = AnthropicLlmClient.toParams(
                 requestWithSystemToolAndMessage(), ModelResolver.IDENTITY, CachePolicy.NONE);
 
         assertThat(params.system().orElseThrow().isString()).isTrue();
-        assertThat(params.cacheControl()).isEmpty();
+        assertThat(lastMessageBreakpoint(params)).isEmpty();
         assertThat(params.tools().orElseThrow().get(0).tool().orElseThrow().cacheControl()).isEmpty();
+        assertThat(params.cacheControl()).isEmpty(); // no top-level auto-caching either
     }
 
     @Test
-    void cachingMarksTheSystemPrefixAndTheRollingConversation() {
+    void cachingMarksTheSystemPrefixAndTheRollingConversationExplicitly() {
         MessageCreateParams params = AnthropicLlmClient.toParams(
                 requestWithSystemToolAndMessage(), ModelResolver.IDENTITY, CachePolicy.EPHEMERAL_5M);
 
@@ -120,8 +129,10 @@ class AnthropicLlmClientTest {
         assertThat(params.system().orElseThrow().isTextBlockParams()).isTrue();
         assertThat(params.system().orElseThrow().asTextBlockParams().get(0)
                 .cacheControl().orElseThrow().ttl()).contains(CacheControlEphemeral.Ttl.TTL_5M);
-        // The top-level breakpoint caches the growing conversation.
-        assertThat(params.cacheControl()).isPresent();
+        // The rolling breakpoint is an EXPLICIT per-block marker on the last message
+        // (not top-level auto-caching, which is unsupported on Bedrock).
+        assertThat(lastMessageBreakpoint(params)).isPresent();
+        assertThat(params.cacheControl()).isEmpty();
         // The tool needs no breakpoint of its own — the system breakpoint covers it.
         assertThat(params.tools().orElseThrow().get(0).tool().orElseThrow().cacheControl()).isEmpty();
     }
@@ -141,7 +152,27 @@ class AnthropicLlmClientTest {
         assertThat(params.system()).isEmpty();
         assertThat(params.tools().orElseThrow().get(0).tool().orElseThrow().cacheControl()).isEmpty();
         assertThat(params.tools().orElseThrow().get(1).tool().orElseThrow().cacheControl()).isPresent();
-        assertThat(params.cacheControl()).isPresent(); // rolling conversation breakpoint
+        assertThat(lastMessageBreakpoint(params)).isPresent(); // rolling conversation breakpoint
+    }
+
+    @Test
+    void cachingMarksAToolResultLastBlock() {
+        LlmRequest request = LlmRequest.builder("claude-opus-4-8")
+                .system("sys")
+                .addMessage(Message.user("go"))
+                .addMessage(Message.of(Role.ASSISTANT,
+                        new dev.agentkit.core.message.ToolUseBlock("t1", "search", Map.of("q", "x"))))
+                .addMessage(Message.of(Role.USER, ToolResultBlock.ok("t1", "result")))
+                .build();
+
+        MessageCreateParams params = AnthropicLlmClient.toParams(
+                request, ModelResolver.IDENTITY, CachePolicy.EPHEMERAL_5M);
+
+        // The last message's tool_result block carries the explicit breakpoint.
+        List<ContentBlockParam> lastBlocks = params.messages()
+                .get(params.messages().size() - 1).content().asBlockParams();
+        assertThat(lastBlocks.get(lastBlocks.size() - 1).toolResult().orElseThrow().cacheControl())
+                .isPresent();
     }
 
     @Test

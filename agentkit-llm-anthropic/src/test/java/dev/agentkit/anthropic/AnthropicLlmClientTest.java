@@ -168,11 +168,17 @@ class AnthropicLlmClientTest {
         MessageCreateParams params = AnthropicLlmClient.toParams(
                 request, ModelResolver.IDENTITY, CachePolicy.EPHEMERAL_5M);
 
-        // The last message's tool_result block carries the explicit breakpoint.
+        // The last message's tool_result block carries the explicit breakpoint...
         List<ContentBlockParam> lastBlocks = params.messages()
                 .get(params.messages().size() - 1).content().asBlockParams();
         assertThat(lastBlocks.get(lastBlocks.size() - 1).toolResult().orElseThrow().cacheControl())
                 .isPresent();
+
+        // ...and only the last message: earlier messages carry no breakpoint.
+        assertThat(params.messages().get(0).content().asBlockParams().get(0)
+                .text().orElseThrow().cacheControl()).isEmpty();
+        assertThat(params.messages().get(1).content().asBlockParams().get(0)
+                .toolUse().orElseThrow().cacheControl()).isEmpty();
     }
 
     @Test

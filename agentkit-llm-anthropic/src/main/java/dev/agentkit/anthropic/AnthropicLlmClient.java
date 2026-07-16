@@ -174,9 +174,9 @@ public final class AnthropicLlmClient implements LlmClient {
     /**
      * Maps a message. When {@code cacheControl} is non-null it is applied to the
      * <em>last</em> content block, placing an explicit cache breakpoint at the end
-     * of the conversation. (A trailing unsigned thinking block is dropped and can't
-     * carry a breakpoint, but that never occurs as a request's last block, which is
-     * always a user turn — text or tool results.)
+     * of the conversation. (Thinking blocks carry no breakpoint — an unsigned one is
+     * dropped entirely — but a thinking block never terminates a request's last
+     * message, which is a user turn: text or tool results.)
      */
     private static MessageParam toMessageParam(Message message, CacheControlEphemeral cacheControl) {
         MessageParam.Role role = switch (message.role()) {

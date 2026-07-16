@@ -61,6 +61,25 @@ class AgentStreamingTest {
     }
 
     @Test
+    void streamingSurvivesThroughABudgetDecorator() {
+        // Regression: decorators that override only generate(request) used to make
+        // streaming silently degrade to one delta. BudgetLlmClient now forwards the
+        // streaming overload, so real deltas still reach the observer through it.
+        CollectingObserver observer = new CollectingObserver();
+        LlmClient budgeted = new dev.agentkit.core.reliability.BudgetLlmClient(
+                streamingClient("Hel", "lo"),
+                dev.agentkit.core.reliability.TokenBudget.ofTotalTokens(1_000_000));
+        Agent agent = Agent.builder(budgeted, new SimpleToolRegistry(), CONFIG)
+                .observer(observer)
+                .streaming(true)
+                .build();
+
+        agent.run(Goal.of("greet"));
+
+        assertThat(observer.deltas).containsExactly("Hel", "lo");
+    }
+
+    @Test
     void streamingIsOffByDefaultSoNoDeltasAreDelivered() {
         CollectingObserver observer = new CollectingObserver();
         // Without .streaming(true) the loop uses the blocking generate(request), which

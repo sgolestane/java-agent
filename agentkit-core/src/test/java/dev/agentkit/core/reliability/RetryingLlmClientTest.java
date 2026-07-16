@@ -7,6 +7,8 @@ import dev.agentkit.core.llm.FakeLlmClient;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmException;
 import dev.agentkit.core.llm.LlmRequest;
+import dev.agentkit.core.llm.LlmResponse;
+import dev.agentkit.core.llm.StreamHandler;
 import dev.agentkit.core.message.Message;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +54,37 @@ class RetryingLlmClientTest {
                 .isInstanceOf(LlmException.class)
                 .hasMessageContaining("3 attempt");
         assertThat(calls).hasValue(3); // initial + 2 retries
+    }
+
+    @Test
+    void streamingPathIsRetriedAndForwardsDeltasOnSuccess() {
+        AtomicInteger calls = new AtomicInteger();
+        // Fails the first streaming attempt, then succeeds and emits two deltas.
+        LlmClient flakyStream = new LlmClient() {
+            @Override
+            public LlmResponse generate(LlmRequest request) {
+                return FakeLlmClient.text("ok");
+            }
+
+            @Override
+            public LlmResponse generate(LlmRequest request, StreamHandler handler) {
+                if (calls.getAndIncrement() < 1) {
+                    throw new LlmException("transient");
+                }
+                handler.onTextDelta("o");
+                handler.onTextDelta("k");
+                return generate(request);
+            }
+        };
+        RetryingLlmClient client = new RetryingLlmClient(
+                flakyStream, new RetryPolicy(3, 1, 10, 2.0), d -> { });
+        List<String> deltas = new ArrayList<>();
+
+        LlmResponse response = client.generate(REQUEST, deltas::add);
+
+        assertThat(response.message().text()).isEqualTo("ok");
+        assertThat(deltas).containsExactly("o", "k"); // deltas from the successful attempt
+        assertThat(calls).hasValue(2); // 1 failure + 1 success on the streaming overload
     }
 
     @Test

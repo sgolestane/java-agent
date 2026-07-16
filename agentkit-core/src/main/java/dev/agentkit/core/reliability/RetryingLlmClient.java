@@ -4,8 +4,10 @@ import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmException;
 import dev.agentkit.core.llm.LlmRequest;
 import dev.agentkit.core.llm.LlmResponse;
+import dev.agentkit.core.llm.StreamHandler;
 import java.util.Objects;
 import java.util.function.LongConsumer;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +19,12 @@ import org.slf4j.LoggerFactory;
  * <p>The {@code sleeper} is injectable (defaulting to {@link Thread#sleep}) so
  * tests can exercise backoff without real delays. An interrupt during a backoff
  * sleep restores the interrupt flag and rethrows the last error.
+ *
+ * <p>Retry applies to the streaming path as well. Because a retried call restarts
+ * from scratch, a failure that occurs <em>after</em> some deltas have already been
+ * emitted causes the handler to see those earlier fragments again on the retry —
+ * the final {@link LlmResponse} is still correct, but a live view may briefly
+ * replay text. Most transient failures occur before any delta, so this is rare.
  */
 public final class RetryingLlmClient implements LlmClient {
 
@@ -38,10 +46,19 @@ public final class RetryingLlmClient implements LlmClient {
 
     @Override
     public LlmResponse generate(LlmRequest request) {
+        return withRetry(() -> delegate.generate(request));
+    }
+
+    @Override
+    public LlmResponse generate(LlmRequest request, StreamHandler handler) {
+        return withRetry(() -> delegate.generate(request, handler));
+    }
+
+    private LlmResponse withRetry(Supplier<LlmResponse> call) {
         LlmException last = null;
         for (int attempt = 0; attempt <= policy.maxRetries(); attempt++) {
             try {
-                return delegate.generate(request);
+                return call.get();
             } catch (LlmException e) {
                 last = e;
                 if (attempt == policy.maxRetries()) {

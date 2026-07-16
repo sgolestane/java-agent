@@ -6,8 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.agentkit.core.llm.FakeLlmClient;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmRequest;
+import dev.agentkit.core.llm.LlmResponse;
+import dev.agentkit.core.llm.StreamHandler;
 import dev.agentkit.core.llm.TokenUsage;
 import dev.agentkit.core.message.Message;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -110,6 +114,60 @@ class BudgetLlmClientTest {
         assertThat(client.spent()).isEqualTo(TokenUsage.ZERO);
         assertThat(client.generate(REQUEST).message().text()).isEqualTo("ok"); // budget available again
         assertThat(calls).hasValue(2);
+    }
+
+    /** A delegate that streams the given fragments and returns their concatenation with usage. */
+    private static LlmClient streamingDelegate(TokenUsage usage, String... fragments) {
+        return new LlmClient() {
+            @Override
+            public LlmResponse generate(LlmRequest request) {
+                return FakeLlmClient.textWithUsage(String.join("", fragments), usage);
+            }
+
+            @Override
+            public LlmResponse generate(LlmRequest request, StreamHandler handler) {
+                for (String f : fragments) {
+                    handler.onTextDelta(f);
+                }
+                return generate(request);
+            }
+        };
+    }
+
+    @Test
+    void streamingPathForwardsRealDeltasAndStillTalliesUsage() {
+        BudgetLlmClient client = new BudgetLlmClient(
+                streamingDelegate(new TokenUsage(10, 5), "He", "llo"), TokenBudget.ofTotalTokens(1000));
+        List<String> deltas = new ArrayList<>();
+
+        LlmResponse response = client.generate(REQUEST, deltas::add);
+
+        assertThat(deltas).containsExactly("He", "llo"); // real deltas survived the decorator
+        assertThat(response.message().text()).isEqualTo("Hello");
+        assertThat(client.spent()).isEqualTo(new TokenUsage(10, 5));
+    }
+
+    @Test
+    void streamingPathIsAlsoRefusedWhenTheBudgetIsExhausted() {
+        AtomicInteger delegateCalls = new AtomicInteger();
+        LlmClient delegate = new LlmClient() {
+            @Override
+            public LlmResponse generate(LlmRequest request) {
+                delegateCalls.incrementAndGet();
+                return FakeLlmClient.textWithUsage("ok", new TokenUsage(100, 0));
+            }
+
+            @Override
+            public LlmResponse generate(LlmRequest request, StreamHandler handler) {
+                return generate(request);
+            }
+        };
+        BudgetLlmClient client = new BudgetLlmClient(delegate, TokenBudget.ofTotalTokens(50));
+
+        client.generate(REQUEST, d -> { }); // spend 100 >= 50
+        assertThatThrownBy(() -> client.generate(REQUEST, d -> { }))
+                .isInstanceOf(BudgetExceededException.class);
+        assertThat(delegateCalls).hasValue(1); // the refused streaming call never reached the delegate
     }
 
     @Test

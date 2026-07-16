@@ -3,10 +3,14 @@ package dev.agentkit.anthropic;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
+import com.anthropic.core.http.StreamResponse;
+import com.anthropic.helpers.MessageAccumulator;
 import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
+import com.anthropic.models.messages.RawContentBlockDelta;
+import com.anthropic.models.messages.RawMessageStreamEvent;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.TextBlockParam;
 import com.anthropic.models.messages.ThinkingBlockParam;
@@ -19,6 +23,7 @@ import dev.agentkit.core.llm.LlmException;
 import dev.agentkit.core.llm.LlmRequest;
 import dev.agentkit.core.llm.LlmResponse;
 import dev.agentkit.core.llm.LlmStopReason;
+import dev.agentkit.core.llm.StreamHandler;
 import dev.agentkit.core.llm.TokenUsage;
 import dev.agentkit.core.message.ContentBlock;
 import dev.agentkit.core.message.Message;
@@ -32,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * An {@link LlmClient} backed by the official Anthropic Java SDK.
@@ -105,6 +111,38 @@ public final class AnthropicLlmClient implements LlmClient {
         } catch (RuntimeException e) {
             throw new LlmException("Anthropic message call failed: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public LlmResponse generate(LlmRequest request, StreamHandler handler) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(handler, "handler");
+        try {
+            MessageCreateParams params = toParams(request, modelResolver, cachePolicy);
+            MessageAccumulator accumulator = MessageAccumulator.create();
+            // The accumulator assembles the final Message from the raw events; we also
+            // forward text deltas live. The stream is closed even on a mid-stream error.
+            try (StreamResponse<RawMessageStreamEvent> stream = client.messages().createStreaming(params)) {
+                stream.stream().forEach(event -> {
+                    accumulator.accumulate(event);
+                    textDelta(event).ifPresent(handler::onTextDelta);
+                });
+            }
+            return toLlmResponse(accumulator.message());
+        } catch (LlmException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new LlmException("Anthropic streaming message call failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** The text fragment carried by a content-block delta event, if this event is one. */
+    static Optional<String> textDelta(RawMessageStreamEvent event) {
+        if (!event.isContentBlockDelta()) {
+            return Optional.empty();
+        }
+        RawContentBlockDelta delta = event.asContentBlockDelta().delta();
+        return delta.isText() ? Optional.of(delta.asText().text()) : Optional.empty();
     }
 
     // --- request mapping ----------------------------------------------------

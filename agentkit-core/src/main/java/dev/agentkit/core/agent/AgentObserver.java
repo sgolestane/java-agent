@@ -21,6 +21,15 @@ public interface AgentObserver {
     default void onStart(Goal goal) {
     }
 
+    /**
+     * Called with each incremental text fragment while a model turn streams in.
+     * Only fires when the agent is built with streaming enabled; {@code delta} is a
+     * fragment to concatenate, and {@link #onModelResponse} still delivers the
+     * completed turn afterward.
+     */
+    default void onTextDelta(int step, String delta) {
+    }
+
     /** Called after each model turn completes. */
     default void onModelResponse(int step, LlmResponse response) {
     }

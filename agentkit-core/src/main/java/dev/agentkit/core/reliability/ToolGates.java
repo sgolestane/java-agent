@@ -34,21 +34,33 @@ public final class ToolGates {
     }
 
     /**
-     * Requires confirmation for invocations matching {@code gatedWhen}. Non-matching
-     * invocations are allowed; matching ones are allowed only if {@code handler}
-     * approves, otherwise denied.
+     * Requires a yes/no confirmation for invocations matching {@code gatedWhen}.
+     * Non-matching invocations are allowed; matching ones are allowed only if
+     * {@code handler} approves, otherwise denied. A convenience over
+     * {@link #requireApproval} for the common boolean case.
      */
     public static ToolGate requireConfirmation(Predicate<ToolInvocation> gatedWhen,
                                                ConfirmationHandler handler) {
-        Objects.requireNonNull(gatedWhen, "gatedWhen");
         Objects.requireNonNull(handler, "handler");
+        return requireApproval(gatedWhen, invocation -> handler.confirm(invocation)
+                ? ApprovalDecision.approve()
+                : ApprovalDecision.deny("This action requires confirmation and was not approved."));
+    }
+
+    /**
+     * Routes invocations matching {@code gatedWhen} through {@code approver} for a
+     * human-in-the-loop decision. Non-matching invocations are allowed unchanged;
+     * matching ones are approved, denied with the approver's reason, or approved
+     * with the approver's edited arguments (see {@link ApprovalDecision}).
+     */
+    public static ToolGate requireApproval(Predicate<ToolInvocation> gatedWhen, Approver approver) {
+        Objects.requireNonNull(gatedWhen, "gatedWhen");
+        Objects.requireNonNull(approver, "approver");
         return invocation -> {
             if (!gatedWhen.test(invocation)) {
                 return GateResult.allow();
             }
-            return handler.confirm(invocation)
-                    ? GateResult.allow()
-                    : GateResult.deny("This action requires confirmation and was not approved.");
+            return approver.review(invocation).toGateResult(invocation);
         };
     }
 

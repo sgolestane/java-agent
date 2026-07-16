@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
-import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -23,8 +22,14 @@ import java.util.Objects;
  *
  * <p>{@link #start(List)} launches the server, performs the {@code initialize}
  * handshake, and leaves the connection ready for {@link #listTools} and
- * {@link #callTool}. {@link #close()} terminates the subprocess. Only the text
- * content of a tool result is surfaced; other content types are ignored.
+ * {@link #callTool}. {@link #close()} terminates the subprocess and releases its
+ * stdio. Only the text content of a tool result is surfaced; other content types
+ * are ignored.
+ *
+ * <p>Every operation blocks until the server responds or the connection closes —
+ * there is no read timeout, so a hung-but-alive server blocks the calling thread.
+ * Supervise long or untrusted tool calls with your own deadline (e.g. run the agent
+ * on an interruptible executor) if that is a concern.
  */
 public final class StdioMcpConnection implements McpConnection {
 
@@ -40,7 +45,13 @@ public final class StdioMcpConnection implements McpConnection {
     StdioMcpConnection(Reader in, Writer out, Runnable closer) {
         this.peer = new JsonRpcPeer(new BufferedReader(in), out, MAPPER);
         this.closer = Objects.requireNonNull(closer, "closer");
-        initialize();
+        try {
+            initialize();
+        } catch (RuntimeException e) {
+            // A failed handshake must not leak the transport (e.g. the subprocess).
+            shutdown();
+            throw e;
+        }
     }
 
     /**
@@ -125,10 +136,12 @@ public final class StdioMcpConnection implements McpConnection {
 
     @Override
     public void close() {
-        try {
-            closer.run();
-        } catch (UncheckedIOException e) {
-            throw new McpException("failed to close MCP connection", e);
-        }
+        shutdown();
+    }
+
+    /** Releases the stdio streams, then the transport (e.g. destroys the subprocess). */
+    private void shutdown() {
+        peer.close();
+        closer.run();
     }
 }

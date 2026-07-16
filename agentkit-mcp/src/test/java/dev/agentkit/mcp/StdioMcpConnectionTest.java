@@ -1,6 +1,7 @@
 package dev.agentkit.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -64,6 +65,50 @@ class StdioMcpConnectionTest {
 
         assertThat(result.text()).isEqualTo("ab"); // text blocks concatenated, image ignored
         assertThat(result.isError()).isTrue();
+    }
+
+    @Test
+    void aFailedHandshakeReleasesTheTransportInsteadOfLeakingIt() {
+        // The server returns a JSON-RPC error to initialize; the constructor must
+        // throw AND run the closer (in production: destroy the subprocess).
+        String script = lines(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"boom\"}}");
+        AtomicBoolean closed = new AtomicBoolean(false);
+
+        assertThatThrownBy(() ->
+                new StdioMcpConnection(new StringReader(script), new StringWriter(), () -> closed.set(true)))
+                .isInstanceOf(McpException.class)
+                .hasMessageContaining("boom");
+        assertThat(closed).as("transport released on handshake failure").isTrue();
+    }
+
+    @Test
+    void aServerRequestWithACollidingIdIsSkippedNotMistakenForTheResponse() {
+        // The server sends a ping (id 1, same as our initialize id) before its real
+        // initialize result. The ping must be skipped so the stream stays in sync.
+        String script = lines(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}",
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"echo\"}]}}");
+        StdioMcpConnection connection =
+                new StdioMcpConnection(new StringReader(script), new StringWriter(), () -> { });
+
+        // If the ping had desynced the stream, listTools would read the wrong line.
+        assertThat(connection.listTools()).singleElement()
+                .satisfies(t -> assertThat(t.name()).isEqualTo("echo"));
+    }
+
+    @Test
+    void aJsonRpcErrorOnToolsCallPropagatesAsMcpException() {
+        String script = lines(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32602,\"message\":\"bad args\"}}");
+        StdioMcpConnection connection =
+                new StdioMcpConnection(new StringReader(script), new StringWriter(), () -> { });
+
+        assertThatThrownBy(() -> connection.callTool("t", Map.of()))
+                .isInstanceOf(McpException.class)
+                .hasMessageContaining("bad args");
     }
 
     @Test

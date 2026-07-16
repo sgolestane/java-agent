@@ -11,10 +11,14 @@ import java.io.Writer;
  * A minimal synchronous JSON-RPC 2.0 client speaking the MCP stdio framing:
  * one JSON message per line. It writes a request and blocks reading lines until the
  * response with the matching id arrives, skipping any interleaved server
- * notifications or unrelated messages.
+ * notifications or server-initiated requests.
  *
  * <p>This is a client for a cooperative single-server session; it does not answer
- * server-initiated requests. Not thread-safe — one outstanding request at a time.
+ * server-initiated requests (e.g. a server {@code ping}) — it simply ignores them.
+ * {@code request} and {@code notify} are synchronized so an accidental shared use
+ * across threads serializes rather than corrupting the framing; there is still only
+ * one outstanding request at a time. {@code awaitResponse} blocks with no timeout,
+ * so a hung-but-alive server blocks the caller until the connection closes.
  */
 final class JsonRpcPeer {
 
@@ -34,7 +38,7 @@ final class JsonRpcPeer {
      *
      * @throws McpException on transport failure or a JSON-RPC error response
      */
-    JsonNode request(String method, JsonNode params) {
+    synchronized JsonNode request(String method, JsonNode params) {
         long id = nextId++;
         ObjectNode request = mapper.createObjectNode();
         request.put("jsonrpc", "2.0");
@@ -48,7 +52,7 @@ final class JsonRpcPeer {
     }
 
     /** Sends a notification (a request with no id, expecting no response). */
-    void notify(String method, JsonNode params) {
+    synchronized void notify(String method, JsonNode params) {
         ObjectNode notification = mapper.createObjectNode();
         notification.put("jsonrpc", "2.0");
         notification.put("method", method);
@@ -66,8 +70,14 @@ final class JsonRpcPeer {
                     continue;
                 }
                 JsonNode message = mapper.readTree(line);
+                // A message carrying "method" is a server notification or a
+                // server-initiated request (e.g. ping), never a response — skip it,
+                // even if its id happens to collide with ours.
+                if (message.has("method")) {
+                    continue;
+                }
                 JsonNode idNode = message.get("id");
-                // Skip notifications (no id) and responses to other requests.
+                // Skip responses to other (already-consumed) requests.
                 if (idNode == null || idNode.isNull() || idNode.asLong() != id) {
                     continue;
                 }
@@ -91,6 +101,20 @@ final class JsonRpcPeer {
             out.flush();
         } catch (IOException e) {
             throw new McpException("failed writing JSON-RPC message", e);
+        }
+    }
+
+    /** Best-effort close of both streams, releasing their file descriptors. */
+    synchronized void close() {
+        try {
+            in.close();
+        } catch (IOException ignored) {
+            // best effort
+        }
+        try {
+            out.close();
+        } catch (IOException ignored) {
+            // best effort
         }
     }
 }

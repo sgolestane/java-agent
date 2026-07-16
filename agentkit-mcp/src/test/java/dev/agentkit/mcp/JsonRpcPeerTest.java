@@ -50,6 +50,19 @@ class JsonRpcPeerTest {
     }
 
     @Test
+    void aServerRequestWhoseIdCollidesWithOursIsSkipped() {
+        // A server-initiated request (has "method") carrying id 1 must NOT be mistaken
+        // for our response, even though its id matches our outstanding request.
+        String script = String.join("\n",
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}",
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"value\":7}}") + "\n";
+
+        JsonNode result = peer(script, new StringWriter()).request("compute", null);
+
+        assertThat(result.path("value").asInt()).isEqualTo(7);
+    }
+
+    @Test
     void anErrorResponseBecomesAnMcpException() {
         String script = "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}\n";
 

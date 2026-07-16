@@ -1,5 +1,7 @@
 package dev.agentkit.mcp;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -14,6 +16,11 @@ public record McpToolInfo(String name, String description, Map<String, Object> i
     public McpToolInfo {
         java.util.Objects.requireNonNull(name, "name");
         description = description == null ? "" : description;
-        inputSchema = inputSchema == null ? Map.of() : Map.copyOf(inputSchema);
+        // A defensive, unmodifiable copy that tolerates null values — a schema from an
+        // untrusted server may legitimately carry them (e.g. "default": null), and
+        // Map.copyOf would reject those.
+        inputSchema = inputSchema == null
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(inputSchema));
     }
 }

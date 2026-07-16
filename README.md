@@ -246,6 +246,29 @@ the budget decorator outside `RetryingLlmClient` so retries count against it. On
 `BudgetLlmClient` tracks one run — build a fresh one per run or call `reset()`
 between runs — and it belongs in the in-process loop, not inside a Temporal activity.
 
+### Streaming
+
+Show a turn's text as it is produced instead of waiting for the whole response.
+Enable streaming on the agent and read the deltas from an `AgentObserver`:
+
+```java
+Agent agent = Agent.builder(AnthropicLlmClient.fromEnv(), tools, config)
+        .streaming(true)
+        .observer(new AgentObserver() {
+            @Override public void onTextDelta(int step, String delta) {
+                System.out.print(delta); // print tokens as they arrive
+            }
+        })
+        .build();
+```
+
+The `AnthropicLlmClient` streams real server-sent deltas; any other `LlmClient`
+degrades gracefully to one delta per turn (the assembled text). Either way the
+returned `AgentResult` is unchanged — the stream is a live view, not a different
+result. Only text is streamed; tool-use and thinking blocks arrive whole in the
+completed turn. You can also stream a single call directly:
+`llm.generate(request, delta -> ...)`.
+
 ### Prompt caching
 
 An agent loop re-sends the same large prefix — tool definitions and the system

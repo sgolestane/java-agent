@@ -3,9 +3,11 @@ package dev.agentkit.core.reliability;
 import dev.agentkit.core.llm.LlmClient;
 import dev.agentkit.core.llm.LlmRequest;
 import dev.agentkit.core.llm.LlmResponse;
+import dev.agentkit.core.llm.StreamHandler;
 import dev.agentkit.core.llm.TokenUsage;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * An {@link LlmClient} decorator that enforces a {@link TokenBudget} across a run,
@@ -46,11 +48,22 @@ public final class BudgetLlmClient implements LlmClient {
 
     @Override
     public LlmResponse generate(LlmRequest request) {
+        return guarded(() -> delegate.generate(request));
+    }
+
+    @Override
+    public LlmResponse generate(LlmRequest request, StreamHandler handler) {
+        // Enforce the budget on the streaming path too, so streaming does not bypass
+        // the cap, and forward to the delegate's streaming call so real deltas survive.
+        return guarded(() -> delegate.generate(request, handler));
+    }
+
+    private LlmResponse guarded(Supplier<LlmResponse> call) {
         TokenUsage current = spent.get();
         if (budget.isExhausted(current)) {
             throw new BudgetExceededException(budget, current);
         }
-        LlmResponse response = delegate.generate(request);
+        LlmResponse response = call.get();
         spent.updateAndGet(u -> u.plus(response.usage()));
         return response;
     }

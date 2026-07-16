@@ -50,6 +50,7 @@ public final class Agent {
     private final AgentObserver observer;
     private final ContextStrategy contextStrategy;
     private final ToolGate toolGate;
+    private final boolean streaming;
 
     public Agent(LlmClient llm, ToolRegistry tools, AgentConfig config) {
         this(llm, tools, config, AgentObserver.NONE, ContextStrategy.IDENTITY);
@@ -71,6 +72,7 @@ public final class Agent {
         this.observer = Objects.requireNonNull(b.observer, "observer");
         this.contextStrategy = Objects.requireNonNull(b.contextStrategy, "contextStrategy");
         this.toolGate = Objects.requireNonNull(b.toolGate, "toolGate");
+        this.streaming = b.streaming;
     }
 
     public static Builder builder(LlmClient llm, ToolRegistry tools, AgentConfig config) {
@@ -85,6 +87,7 @@ public final class Agent {
         private AgentObserver observer = AgentObserver.NONE;
         private ContextStrategy contextStrategy = ContextStrategy.IDENTITY;
         private ToolGate toolGate = ToolGate.ALLOW_ALL;
+        private boolean streaming;
 
         private Builder(LlmClient llm, ToolRegistry tools, AgentConfig config) {
             this.llm = llm;
@@ -104,6 +107,17 @@ public final class Agent {
 
         public Builder toolGate(ToolGate toolGate) {
             this.toolGate = toolGate;
+            return this;
+        }
+
+        /**
+         * When enabled, each model turn is streamed and its text deltas are delivered
+         * to {@link AgentObserver#onTextDelta}. Off by default; requires a streaming
+         * observer to be useful, and a client that supports streaming to be
+         * incremental (others degrade to a single delta per turn).
+         */
+        public Builder streaming(boolean streaming) {
+            this.streaming = streaming;
             return this;
         }
 
@@ -136,7 +150,11 @@ public final class Agent {
 
             LlmResponse response;
             try {
-                response = llm.generate(buildRequest(conversation));
+                LlmRequest request = buildRequest(conversation);
+                int turn = steps + 1;
+                response = streaming
+                        ? llm.generate(request, delta -> observer.onTextDelta(turn, delta))
+                        : llm.generate(request);
             } catch (BudgetExceededException e) {
                 // A deliberate stop from a BudgetLlmClient, not a failure.
                 log.info("Stopping before step {}: {}", steps + 1, e.getMessage());

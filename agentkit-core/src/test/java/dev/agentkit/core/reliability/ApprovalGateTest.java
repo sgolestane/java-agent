@@ -81,6 +81,43 @@ class ApprovalGateTest {
     }
 
     @Test
+    void allOfPreservesAnApprovalEditAndThreadsItToLaterGates() {
+        // First gate caps the amount; a later gate must see the edited value (not the
+        // original 1,000,000), and the combined result must carry the edit forward.
+        Approver capping = i -> ApprovalDecision.approveWithArguments(Map.of("amount", 10));
+        AtomicReference<Object> seenByLaterGate = new AtomicReference<>();
+        ToolGate observingLater = i -> {
+            seenByLaterGate.set(i.argument("amount"));
+            return GateResult.allow();
+        };
+
+        ToolGate combined = ToolGates.allOf(
+                ToolGates.requireApproval(i -> i.name().equals("wire"), capping),
+                observingLater);
+
+        GateResult result = combined.evaluate(inv("wire", Map.of("amount", 1_000_000)));
+
+        assertThat(seenByLaterGate.get()).isEqualTo(10); // later gate saw the edited args
+        assertThat(result.replacement().orElseThrow().argument("amount")).isEqualTo(10);
+    }
+
+    @Test
+    void allOfWithNoEditsReturnsAPlainAllow() {
+        ToolGate combined = ToolGates.allOf(ToolGates.allowAll(), ToolGates.allowAll());
+        assertThat(combined.evaluate(inv("read", Map.of())).replacement()).isEmpty();
+    }
+
+    @Test
+    void allOfStillShortCircuitsOnTheFirstDenial() {
+        ToolGate combined = ToolGates.allOf(
+                ToolGates.requireApproval(i -> true, i -> ApprovalDecision.deny("nope")),
+                ToolGates.allowAll());
+        GateResult result = combined.evaluate(inv("send", Map.of()));
+        assertThat(result.allowed()).isFalse();
+        assertThat(result.reason()).isEqualTo("nope");
+    }
+
+    @Test
     void editedArgumentsActuallyReachTheToolInTheAgentLoop() {
         AtomicReference<Object> executedAmount = new AtomicReference<>();
         var registry = new SimpleToolRegistry().register(

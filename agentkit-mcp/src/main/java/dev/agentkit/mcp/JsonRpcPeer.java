@@ -104,8 +104,17 @@ final class JsonRpcPeer {
         }
     }
 
-    /** Best-effort close of both streams, releasing their file descriptors. */
-    synchronized void close() {
+    /**
+     * Best-effort close of both streams, releasing their file descriptors.
+     *
+     * <p>Deliberately <em>not</em> {@code synchronized}. This does not by itself
+     * unblock a {@link #request} blocked in {@code readLine} — a {@link BufferedReader}
+     * shares its monitor between {@code readLine} and {@code close}, so it must be
+     * called only after the underlying transport has been torn down (e.g. the
+     * subprocess destroyed), which is what actually releases the blocked read. See
+     * {@code StdioMcpConnection#shutdown}.
+     */
+    void close() {
         try {
             in.close();
         } catch (IOException ignored) {

@@ -7,8 +7,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.BufferedReader;
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.Writer;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class JsonRpcPeerTest {
@@ -89,6 +92,30 @@ class JsonRpcPeerTest {
         JsonNode sent = MAPPER.readTree(out.toString().trim());
         assertThat(sent.path("method").asText()).isEqualTo("notifications/initialized");
         assertThat(sent.has("id")).isFalse();
+    }
+
+    @Test
+    void closeClosesBothStreams() {
+        AtomicBoolean readerClosed = new AtomicBoolean();
+        AtomicBoolean writerClosed = new AtomicBoolean();
+        Reader in = new StringReader("") {
+            @Override
+            public void close() {
+                readerClosed.set(true);
+                super.close();
+            }
+        };
+        Writer out = new StringWriter() {
+            @Override
+            public void close() {
+                writerClosed.set(true);
+            }
+        };
+
+        new JsonRpcPeer(new BufferedReader(in), out, MAPPER).close();
+
+        assertThat(readerClosed).isTrue();
+        assertThat(writerClosed).isTrue();
     }
 
     @Test

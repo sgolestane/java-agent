@@ -28,8 +28,9 @@ import java.util.Objects;
  *
  * <p>Every operation blocks until the server responds or the connection closes —
  * there is no read timeout, so a hung-but-alive server blocks the calling thread.
- * Supervise long or untrusted tool calls with your own deadline (e.g. run the agent
- * on an interruptible executor) if that is a concern.
+ * Thread interruption does not unblock a blocking pipe read; to abort a hung call,
+ * call {@link #close()} from another thread, which closes the stdio (unblocking the
+ * read with an {@link McpException}) and terminates the subprocess.
  */
 public final class StdioMcpConnection implements McpConnection {
 
@@ -139,9 +140,17 @@ public final class StdioMcpConnection implements McpConnection {
         shutdown();
     }
 
-    /** Releases the stdio streams, then the transport (e.g. destroys the subprocess). */
+    /**
+     * Aborts the transport, then releases the stdio streams.
+     *
+     * <p>The {@code closer} runs <em>first</em>: destroying the subprocess closes its
+     * pipe, which unblocks a read blocked on a hung server (closing the reader itself
+     * cannot — a blocked {@code readLine} holds the reader's monitor, so closing it
+     * would deadlock). Only after the read is unblocked is it safe to close the
+     * streams for deterministic fd release.
+     */
     private void shutdown() {
-        peer.close();
         closer.run();
+        peer.close();
     }
 }

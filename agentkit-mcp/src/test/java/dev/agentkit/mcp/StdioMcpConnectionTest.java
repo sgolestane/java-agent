@@ -3,10 +3,18 @@ package dev.agentkit.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
@@ -121,5 +129,78 @@ class StdioMcpConnectionTest {
         connection.close();
 
         assertThat(closed).isTrue();
+    }
+
+    /**
+     * A reader that yields {@code head} (the initialize line) then blocks every later
+     * read until {@code pipeClosed} trips, at which point it behaves like a closed
+     * pipe — modelling a hung server whose subprocess is later destroyed.
+     */
+    private static Reader blockingAfter(String head, CountDownLatch pipeClosed) {
+        return new Reader() {
+            private final StringReader headReader = new StringReader(head);
+            private boolean headDone;
+
+            @Override
+            public int read(char[] cbuf, int off, int len) throws IOException {
+                if (!headDone) {
+                    int n = headReader.read(cbuf, off, len);
+                    if (n != -1) {
+                        return n;
+                    }
+                    headDone = true;
+                }
+                try {
+                    pipeClosed.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException(e);
+                }
+                throw new IOException("pipe closed");
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+    }
+
+    @Test
+    void closeFromAnotherThreadAbortsAHungCall() throws Exception {
+        // initialize succeeds, then a tools/call blocks on a silent server. close()
+        // must abort it: the closer (here, trip the "pipe") runs first and unblocks
+        // the read, so the call fails fast instead of hanging forever.
+        CountDownLatch pipeClosed = new CountDownLatch(1);
+        Reader in = blockingAfter("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n", pipeClosed);
+        StdioMcpConnection connection =
+                new StdioMcpConnection(in, new StringWriter(), pipeClosed::countDown);
+
+        ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r);
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            Future<?> call = worker.submit(() -> connection.callTool("slow", Map.of()));
+            Thread.sleep(100); // let the call reach the blocking read
+
+            connection.close(); // aborts the hung call from this thread
+
+            assertThatThrownBy(() -> call.get(2, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasCauseInstanceOf(McpException.class);
+        } finally {
+            worker.shutdownNow();
+        }
+    }
+
+    @Test
+    void closeIsIdempotent() {
+        String script = lines("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+        StdioMcpConnection connection =
+                new StdioMcpConnection(new StringReader(script), new StringWriter(), () -> { });
+
+        connection.close();
+        connection.close(); // second close must not throw
     }
 }

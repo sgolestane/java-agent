@@ -260,6 +260,33 @@ need the revealed set tracked as durable state); context compaction issues its o
 model call, so it belongs in a future activity; and because activity retry is
 at-least-once, a non-idempotent tool should set `toolMaxAttempts = 1`.
 
+**Temporal Cloud.** The integration is connection-agnostic — `TemporalAgent` takes
+a `WorkflowClient` *you* build, so running against Temporal Cloud instead of a local
+dev server is just the `WorkflowServiceStubs` config; nothing in AgentKit changes.
+Keep `TemporalAgent.dataConverter()` on the client (the one AgentKit-specific
+requirement) and use the same connection for the worker's client.
+
+```java
+// API-key auth (or mTLS — see the comment below):
+WorkflowServiceStubs service = WorkflowServiceStubs.newServiceStubs(
+        WorkflowServiceStubsOptions.newBuilder()
+                .setTarget("<region>.<cloud>.api.temporal.io:7233")   // your regional gRPC endpoint
+                .addApiKey(() -> System.getenv("TEMPORAL_API_KEY"))
+                .setEnableHttps(true)
+                .build());
+// mTLS instead: .setSslContext(SimpleSslContextBuilder.forPKCS8(certStream, keyStream).build())
+//               with target "<namespace>.<account>.tmprl.cloud:7233"
+
+WorkflowClient client = WorkflowClient.newInstance(service,
+        WorkflowClientOptions.newBuilder()
+                .setNamespace("<namespace>.<account>")                // e.g. my-ns.a1b2c
+                .setDataConverter(TemporalAgent.dataConverter())      // required, as for local
+                .build());
+```
+
+From here the worker + run wiring is identical to the local snippet above (and to
+`TemporalWorkerExample`, which uses `newLocalServiceStubs()` for the dev server).
+
 ### Running on Amazon Bedrock
 
 The Anthropic adapter is backend-agnostic — `agentkit-llm-bedrock` runs the same

@@ -20,9 +20,15 @@ import io.temporal.worker.WorkerFactory;
  * AgentKit data converter, then starts one durable run.
  *
  * <p>Requires a reachable Temporal service (e.g. {@code temporal server
- * start-dev} on localhost) and {@code ANTHROPIC_API_KEY}; it is a {@code main}
- * demo rather than a test. The in-memory, no-server durability tests live in
- * {@code agentkit-temporal}.
+ * start-dev} on localhost) and credentials for the configured backend
+ * ({@code ANTHROPIC_API_KEY} by default, or the AWS/Bedrock vars — see
+ * {@link ExampleBackend}); it is a {@code main} demo rather than a test. The
+ * in-memory, no-server durability tests live in {@code agentkit-temporal}.
+ *
+ * <p>{@code newLocalServiceStubs()} targets a local dev server; point at Temporal
+ * Cloud by building the {@code WorkflowServiceStubs} with your Cloud target,
+ * namespace, and API-key or mTLS auth instead (see the README) — the rest is
+ * unchanged.
  */
 public final class TemporalWorkerExample {
 
